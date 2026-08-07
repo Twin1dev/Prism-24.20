@@ -168,29 +168,109 @@ public:
 };
 DUMPER7_ASSERTS_FStateStruct;
 
-// ScriptStruct NetCore.FastArraySerializer
-// 0x0108 (0x0108 - 0x0000)
-struct alignas(0x08) FFastArraySerializer
-{
-public:
-	uint8                                         Pad_0[0x54];                                       // 0x0000(0x0054)(Fixing Size After Last Property [ Dumper-7 ])
-	int32                                         ArrayReplicationKey;                               // 0x0054(0x0004)(ZeroConstructor, IsPlainOldData, RepSkip, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-	uint8                                         Pad_58[0xA8];                                      // 0x0058(0x00A8)(Fixing Size After Last Property [ Dumper-7 ])
-	EFastArraySerializerDeltaFlags                DeltaFlags;                                        // 0x0100(0x0001)(ZeroConstructor, Transient, IsPlainOldData, RepSkip, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPrivate)
-	uint8                                         Pad_101[0x7];                                      // 0x0101(0x0007)(Fixing Struct Size After Last Property [ Dumper-7 ])
-};
-DUMPER7_ASSERTS_FFastArraySerializer;
-
 // ScriptStruct NetCore.FastArraySerializerItem
 // 0x000C (0x000C - 0x0000)
 struct FFastArraySerializerItem
 {
-public:
-	int32                                         ReplicationID;                                     // 0x0000(0x0004)(ZeroConstructor, IsPlainOldData, RepSkip, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-	int32                                         ReplicationKey;                                    // 0x0004(0x0004)(ZeroConstructor, IsPlainOldData, RepSkip, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-	int32                                         MostRecentArrayReplicationKey;                     // 0x0008(0x0004)(ZeroConstructor, IsPlainOldData, RepSkip, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
+	int32 ReplicationID = -1;
+	int32 ReplicationKey = -1;
+	int32 MostRecentArrayReplicationKey = -1;
 };
+
 DUMPER7_ASSERTS_FFastArraySerializerItem;
+
+struct alignas(0x08) FFastArraySerializer
+{
+	TMap<int32, int32> ItemMap;
+	int32 IDCounter;
+	int32 ArrayReplicationKey;
+	char GuidReferencesMap[0x50];
+	char GuidReferencesMap_StructDelta[0x50];
+
+	int32 CachedNumItems;
+	int32 CachedNumItemsToConsiderForWriting;
+
+	EFastArraySerializerDeltaFlags DeltaFlags;
+
+	uint8 _Padding1[0x7];
+
+	void MarkItemDirty(FFastArraySerializerItem& Item)
+	{
+		if (Item.ReplicationID == -1)
+		{
+			Item.ReplicationID = ++IDCounter;
+			if (IDCounter == -1)
+				++IDCounter;
+		}
+
+		Item.ReplicationKey++;
+		MarkArrayDirty();
+	}
+
+	void MarkArrayDirty()
+	{
+		ItemMap.Reset();
+		IncrementArrayReplicationKey();
+
+		CachedNumItems = -1;
+		CachedNumItemsToConsiderForWriting = -1;
+	}
+
+	void IncrementArrayReplicationKey()
+	{
+		ArrayReplicationKey++;
+		if (ArrayReplicationKey == -1)
+			++ArrayReplicationKey;
+	}
+};
+
+// ScriptStruct NetCore.FastArraySerializer
+// 0x0108 (0x0108 - 0x0000)
+/*struct alignas(0x08) FFastArraySerializer
+{
+public:
+	uint8 ItemMap[80];
+	int32 IDCounter;
+	int32 ArrayReplicationKey;
+	char GuidReferencesMap[0x50];
+	char GuidReferencesMap_StructDelta[0x50];
+
+	int32 CachedNumItems;
+	int32 CachedNumItemsToConsiderForWriting;
+
+	EFastArraySerializerDeltaFlags DeltaFlags;
+
+	uint8 _Padding1[0x7];
+
+	void MarkItemDirty(FFastArraySerializerItem& Item, bool markArrayDirty = true)
+	{
+		if (Item.ReplicationID == -1)
+		{
+			Item.ReplicationID = ++IDCounter;
+			if (IDCounter == -1)
+			{
+				IDCounter++;
+			}
+		}
+
+		Item.ReplicationKey++;
+		if (markArrayDirty) MarkArrayDirty();
+	}
+
+	void MarkArrayDirty()
+	{
+		ArrayReplicationKey++;
+		if (ArrayReplicationKey == -1)
+		{
+			ArrayReplicationKey++;
+		}
+
+		CachedNumItems = -1;
+		CachedNumItemsToConsiderForWriting = -1;
+	}
+};*/
+DUMPER7_ASSERTS_FFastArraySerializer;
+
 
 // ScriptStruct NetCore.NetAnalyticsDataConfig
 // 0x0008 (0x0008 - 0x0000)

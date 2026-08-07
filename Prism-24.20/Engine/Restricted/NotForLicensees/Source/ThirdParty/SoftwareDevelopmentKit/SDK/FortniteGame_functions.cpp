@@ -18,6 +18,33 @@
 
 SDK_NAMESPACE_START
 
+// Predefined Function
+// Declared in FortniteGame_structs.hpp, where UFortWorldItemDefinition is not defined yet.
+
+bool FFortItemEntry::ShouldShowItemToast() const
+{
+	if (!ItemDefinition)
+	{
+		return false;
+	}
+
+	if (!ItemDefinition->IsA(UFortWorldItemDefinition::StaticClass()))
+	{
+		return false;
+	}
+
+	for (const FFortItemEntryStateValue& StateValue : StateValues)
+	{
+		if (StateValue.StateType == EFortItemEntryState::ShouldShowItemToast)
+		{
+			return StateValue.IntValue != 0;
+		}
+	}
+
+	return false;
+}
+
+
 // Function FortniteGame.DestroyOnSafeZonePhaseComponent.HandlePlaylistReady
 // (Final, Native, Protected, HasOutParams)
 // Parameters:

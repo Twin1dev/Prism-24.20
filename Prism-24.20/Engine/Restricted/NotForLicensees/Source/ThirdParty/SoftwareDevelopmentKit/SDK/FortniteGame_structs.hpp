@@ -20729,6 +20729,78 @@ public:
 	uint8                                         Pad_148[0x50];                                     // 0x0148(0x0050)(Fixing Size After Last Property [ Dumper-7 ])
 	int32                                         PickupVariantIndex;                                // 0x0198(0x0004)(ZeroConstructor, Transient, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPrivate)
 	int32                                         ItemVariantDataMappingIndex;                       // 0x019C(0x0004)(ZeroConstructor, Transient, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPrivate)
+
+	FFortItemEntry& operator=(const FFortItemEntry& Other)
+	{
+		if (this == &Other)
+		{
+			return *this;
+		}
+
+		Count = Other.Count;
+		PreviousCount = Other.PreviousCount;
+		ItemDefinition = Other.ItemDefinition;
+		OrderIndex = Other.OrderIndex;
+		Durability = Other.Durability;
+		Level = Other.Level;
+		LoadedAmmo = Other.LoadedAmmo;
+		PhantomReserveAmmo = Other.PhantomReserveAmmo;
+		AlterationDefinitions = Other.AlterationDefinitions;
+		SavedWeaponModSlots = Other.SavedWeaponModSlots;
+		ItemSource = Other.ItemSource;
+		ItemGuid = Other.ItemGuid;
+		TrackerGuid = Other.TrackerGuid;
+		ItemVariantGuid = Other.ItemVariantGuid;
+		ControlOverride = Other.ControlOverride;
+		inventory_overflow_date = Other.inventory_overflow_date;
+		bWasGifted = Other.bWasGifted;
+		bIsReplicatedCopy = Other.bIsReplicatedCopy;
+		bIsDirty = Other.bIsDirty;
+		bUpdateStatsOnCollection = Other.bUpdateStatsOnCollection;
+		GiftingInfo = Other.GiftingInfo;
+		StateValues = Other.StateValues;
+		ParentInventory = Other.ParentInventory;
+		GameplayAbilitySpecHandle = Other.GameplayAbilitySpecHandle;
+		AlterationInstances = Other.AlterationInstances;
+		WeaponModSlots = Other.WeaponModSlots;
+		WrapOverride = Other.WrapOverride;
+		GenericAttributeValues = Other.GenericAttributeValues;
+		PickupVariantIndex = Other.PickupVariantIndex;
+		ItemVariantDataMappingIndex = Other.ItemVariantDataMappingIndex;
+
+		return *this;
+	}
+
+	bool IsValidItemEntry() const
+	{
+		return ItemDefinition != nullptr;
+	}
+
+	/* Out of line with the rest: it tests against UFortWorldItemDefinition, which is only
+	   forward declared here. Defined in FortniteGame_functions.cpp. */
+	bool ShouldShowItemToast() const;
+
+	static bool CanStackTogether(const FFortItemEntry& A, const FFortItemEntry& B)
+	{
+		if (A.ItemDefinition != B.ItemDefinition || A.Level != B.Level)
+			return false;
+
+		if (A.AlterationInstances.Num() != B.AlterationInstances.Num())
+			return false;
+
+		TArray<UFortAlterationItemDefinition*> Remaining = B.AlterationInstances;
+
+		for (UFortAlterationItemDefinition* Alteration : A.AlterationInstances)
+		{
+			auto FoundIndex = Remaining.Find(Alteration);
+
+			Remaining.RemoveAt(FoundIndex);
+		}
+
+		return true;
+	}
+
+
 };
 DUMPER7_ASSERTS_FFortItemEntry;
 
@@ -44250,10 +44322,14 @@ DUMPER7_ASSERTS_FItemCollectorRow;
 struct FBuildingSMActorAttemptSpawnResourcesParams final
 {
 public:
-	class AFortPlayerPawn*                        InstigatorPawn;                                    // 0x0000(0x0008)(ZeroConstructor, Transient, NoDestructor, UObjectWrapper, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-	uint8                                         Pad_8[0x30];                                       // 0x0008(0x0030)(Fixing Struct Size After Last Property [ Dumper-7 ])
+	class AFortPlayerPawn* InstigatorPawn;                                    // 0x0000(0x0008)(ZeroConstructor, Transient, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
+	struct FGameplayTagContainer                  Tags;
+	float                                          ActualDamageDealt;
+	bool                                          bJustHitWeakspot;
+	uint8                                         Pad_2D[0x3];                                       // 0x0008(0x0030)(Fixing Struct Size After Last Property [ Dumper-7 ])
+	struct FFortGameplayEffectContext* FortEffectContext;
 };
-DUMPER7_ASSERTS_FBuildingSMActorAttemptSpawnResourcesParams;
+//DUMPER7_ASSERTS_FBuildingSMActorAttemptSpawnResourcesParams;
 
 // ScriptStruct FortniteGame.BuildingPoolHarvestResourceSpawnsData
 // 0x0130 (0x0130 - 0x0000)

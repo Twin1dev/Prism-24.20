@@ -45,6 +45,7 @@
 
 #include "../PropertyFixup.hpp"
 #include "../UnrealContainers.hpp"
+#include "../UnrealMath.hpp"
 #include "Interception.hpp"
 #include "MemoryPatch.hpp"
 #include "ModuleManager.hpp"
@@ -75,6 +76,13 @@ namespace Offsets
 	constexpr int32 GWorld            = 0x1078A7D8;
 	constexpr int32 ProcessEvent      = 0x00F86384;
 	constexpr int32 ProcessEventIdx   = 0x0000004D;
+
+	/*
+	* FMemory::Realloc. Allocates when Original is null and frees when Count is zero, so it is the
+	* only one of the three the SDK needs. It creates GMalloc itself if nothing has yet, which is why
+	* it is safe to call this before the engine has finished starting up.
+	*/
+	constexpr int32 Realloc           = 0x06E090E8;
 }
 
 /*
@@ -252,7 +260,12 @@ struct FUObjectItem final
 {
 public:
 	class UObject*                                Object;                                            // 0x0000(0x0008)(NOT AUTO-GENERATED PROPERTY)
-	uint8                                         Pad_8[0x10];                                       // 0x0008(0x0010)(Fixing Struct Size After Last Property [ Dumper-7 ])
+	// Internal flags
+	int32 Flags;
+	// UObject Owner Cluster Index
+	int32 ClusterRootIndex;
+	// Weak Object Pointer Serial number associated with the object
+	int32 SerialNumber;
 };
 DUMPER7_ASSERTS_FUObjectItem;
 
@@ -298,6 +311,20 @@ public:
 		if (!ChunkPtr) return nullptr;
 		
 		return ChunkPtr[InChunkIdx].Object;
+	}
+
+	inline int32 GetSerialNumberByIndex(const int32 Index) const
+	{
+		const int32 ChunkIndex = Index / ElementsPerChunk;
+		const int32 InChunkIdx = Index % ElementsPerChunk;
+
+		if (Index < 0 || ChunkIndex >= NumChunks || Index >= NumElements)
+			return 0;
+
+		FUObjectItem* ChunkPtr = GetDecrytedObjPtr()[ChunkIndex];
+		if (!ChunkPtr) return 0;
+
+		return ChunkPtr[InChunkIdx].SerialNumber;
 	}
 };
 DUMPER7_ASSERTS_TUObjectArray;
@@ -414,14 +441,17 @@ public:
 	
 	std::string GetRawString() const
 	{
-		wchar_t buffer[1024];
-	    FString TempString(buffer, 0, 1024);
-	
+		/* FString::AppendString grows the string through FMemory, so it wants a real FString and not
+		 * a view over a stack buffer - hand it one with room already reserved, the way the engine
+		 * calls it itself. */
+		FString TempString;
+		TempString.Reserve(1024);
+
 		if (!AppendString)
 			InitInternal();
-	
+
 		InSDKUtils::CallGameFunction(reinterpret_cast<void(*)(const FName*, FString&)>(AppendString), this, TempString);
-	
+
 		return TempString.ToString();
 	}
 	
@@ -444,6 +474,13 @@ public:
 	bool operator!=(const FName& Other) const
 	{
 		return ComparisonIndex != Other.ComparisonIndex;
+	}
+
+	/* Declared next to the type so that the unqualified GetTypeHash a key funcs struct calls finds
+	   it through argument-dependent lookup, wherever that struct lives. */
+	friend uint32 GetTypeHash(const FName& Name)
+	{
+		return static_cast<uint32>(Name.ComparisonIndex);
 	}
 };
 DUMPER7_ASSERTS_FName;
@@ -508,6 +545,14 @@ public:
 	{
 		return ClassPtr != Other;
 	}
+
+	/* A TSubclassOf is nothing but the class it points at. Declared next to the type so that the
+	   unqualified GetTypeHash a key funcs struct calls finds it through argument-dependent lookup. */
+	friend uint32 GetTypeHash(const TSubclassOf& Class)
+	{
+		const uint64 Pointer = reinterpret_cast<uint64>(Class.ClassPtr);
+		return static_cast<uint32>(Pointer ^ (Pointer >> 32));
+	}
 };
 
 // Predefined struct FStructBaseChain
@@ -568,13 +613,71 @@ public:
 	bool operator!=(const FWeakObjectPtr& Other) const;
 	bool operator==(const class UObject* Other) const;
 	bool operator!=(const class UObject* Other) const;
+
+	/* Out of line with the rest: UObject is only forward declared here. */
+	FWeakObjectPtr& operator=(const class UObject* Object);
+
+	FWeakObjectPtr()
+	{
+		Reset();
+	}
+
+
+	inline FWeakObjectPtr(const class UObject* Object)
+	{
+		(*this) = Object;
+	}
+	inline FWeakObjectPtr(const FWeakObjectPtr& Other)
+	{
+		(*this) = Other;
+	}
+
+	inline void Reset()
+	{
+		ObjectIndex = -1;
+		ObjectSerialNumber = 0;
+	}
+
+	inline void operator=(const FWeakObjectPtr& Other)
+	{
+		ObjectIndex = Other.ObjectIndex;
+		ObjectSerialNumber = Other.ObjectSerialNumber;
+	}
 };
-DUMPER7_ASSERTS_FWeakObjectPtr;
 
 template<typename UEType>
 class TWeakObjectPtr : public FWeakObjectPtr
 {
 public:
+	TWeakObjectPtr() = default;
+	TWeakObjectPtr& operator=(const TWeakObjectPtr&) = default;
+	TWeakObjectPtr(const TWeakObjectPtr&) = default;
+
+	TWeakObjectPtr(decltype(nullptr)) :
+		FWeakObjectPtr((UObject*)nullptr)
+	{
+	}
+
+	inline TWeakObjectPtr(const class UObject* Object)
+	{
+		(*this) = Object;
+	}
+
+	inline TWeakObjectPtr(const FWeakObjectPtr& Other)
+	{
+		(*this) = Other;
+	}
+
+	void operator=(const class UObject* Object)
+	{
+		FWeakObjectPtr::operator=(Object);
+	}
+
+	void operator=(const FWeakObjectPtr& Other)
+	{
+		FWeakObjectPtr::operator=(Other);
+	}
+
 	UEType* Get() const
 	{
 		return static_cast<UEType*>(FWeakObjectPtr::Get());
@@ -584,7 +687,13 @@ public:
 	{
 		return static_cast<UEType*>(FWeakObjectPtr::Get());
 	}
+
+	bool IsValid() const
+	{
+		return Get() != nullptr;
+	}
 };
+
 
 // Predefined struct FUniqueObjectGuid
 // 0x0010 (0x0010 - 0x0000)
@@ -660,11 +769,24 @@ DUMPER7_ASSERTS_FSoftObjectPath;
 
 class FSoftObjectPtr : public TPersistentObjectPtr<FakeSoftObjectPtr::FSoftObjectPath>
 {
+public:
+	UObject* LoadSynchronous() const
+	{
+		static UObject* (*_load)(const FSoftObjectPtr * Ptr) =
+			decltype(_load)(InSDKUtils::GetImageBase() + 0x1971430);
+
+		return _load(this);
+	}
 };
 
 template<typename UEType>
 class TSoftObjectPtr : public FSoftObjectPtr
 {
+public:
+	UEType* LoadSynchronous() const
+	{
+		return static_cast<UEType*>(FSoftObjectPtr::LoadSynchronous());
+	}
 public:
 	UEType* Get() const
 	{
@@ -679,6 +801,11 @@ public:
 template<typename UEType>
 class TSoftClassPtr : public FSoftObjectPtr
 {
+public:
+	UEType* LoadSynchronous() const
+	{
+		return static_cast<UEType*>(FSoftObjectPtr::LoadSynchronous());
+	}
 public:
 	UEType* Get() const
 	{
@@ -830,6 +957,41 @@ public:
 	FScriptDelegate                               BoundFunction;                                     // 0x0000(0x000C)(NOT AUTO-GENERATED PROPERTY)
 };
 
+// Holds a call's arguments as one standard-layout, sequentially-laid-out object so that
+// `&Holder` can be passed to UObject::ProcessEvent() as the raw parameter struct: a plain
+// `Args... Params;` member-pack declaration isn't legal C++, so each argument instead becomes
+// its own uniquely-indexed, non-virtual base -- both MSVC and Itanium lay those out in
+// declaration order for standard-layout types, matching what a real generated params struct
+// would look like.
+template<int Index, typename T>
+struct TArgumentSlot
+{
+	T Value;
+};
+
+template<typename Indices, typename... Ts>
+struct TArgumentsImpl;
+
+template<int... Indices, typename... Ts>
+struct TArgumentsImpl<std::integer_sequence<int, Indices...>, Ts...> : public TArgumentSlot<Indices, Ts>...
+{
+	explicit TArgumentsImpl(Ts&&... InArgs)
+		: TArgumentSlot<Indices, Ts>{ std::forward<Ts>(InArgs) }...
+	{
+	}
+};
+
+template<typename... Ts>
+struct TArguments : public TArgumentsImpl<std::make_integer_sequence<int, sizeof...(Ts)>, Ts...>
+{
+	using Super = TArgumentsImpl<std::make_integer_sequence<int, sizeof...(Ts)>, Ts...>;
+
+	explicit TArguments(Ts&&... InArgs)
+		: Super(std::forward<Ts>(InArgs)...)
+	{
+	}
+};
+
 // Predefined struct TMulticastInlineDelegate
 // 0x0010 (0x0010 - 0x0000)
 template<typename FunctionSignature>
@@ -846,6 +1008,34 @@ class TMulticastInlineDelegate<Ret(Args...)>
 {
 public:
 	TArray<FScriptDelegate>                       InvocationList;                                    // 0x0000(0x0010)(NOT AUTO-GENERATED PROPERTY)
+
+	template<typename... CallArgs>
+	void Process(CallArgs&&... args) const
+	{
+		TArguments<std::decay_t<Args>...> Parameters{ std::decay_t<Args>(std::forward<CallArgs>(args))... };
+
+		// Mirrors TMulticastScriptDelegate::ProcessDelegate (ScriptDelegates.h): take a copy of the
+		// invocation list first, since a bound function may add/remove bindings while it's executing,
+		// which would otherwise invalidate the InvocationList we're iterating over.
+		TArray<FScriptDelegate> InvocationListCopy = InvocationList;
+
+		for (const FScriptDelegate& Binding : InvocationListCopy)
+		{
+			// Matches TScriptDelegate::IsBound(): both the object and the function name must be valid.
+			if (Binding.FunctionName.IsNone())
+				continue;
+
+			UObject* BoundObject = Binding.Object.Get();
+			if (!BoundObject)
+				continue;
+
+			UFunction* Function = BoundObject->Class->GetFunction(Binding.FunctionName);
+			if (!Function)
+				continue;
+
+			BoundObject->ProcessEvent(Function, &Parameters);
+		}
+	}
 };
 
 template<typename EnumType, typename UnderlyingType>
@@ -1486,6 +1676,34 @@ public:
 
 	bool Install(class UFunction* Function, class UObject* DefaultObject, void* Replacement);
 
+	/**
+	 * Takes over a virtual function table slot named outright, instead of decoding the UFunction's
+	 * thunk to work out which slot it is.
+	 *
+	 * ResolveNativeImplementation reads the thunk and picks the virtual call it finds there. That is
+	 * right for the common shape, but a thunk that touches more than one virtual function - or one
+	 * the heuristic reads differently than the compiler wrote it - can resolve to a slot that is not
+	 * the one the function actually lives in. The symptom is an override that either never fires or
+	 * displaces something else entirely, which is why a recovered index can be passed straight in.
+	 *
+	 * The slot is still checked for plausibility: the table has to exist and the entry has to point
+	 * at executable memory. A wrong index is rejected rather than written over.
+	 */
+	bool InstallAtVirtualIndex(class UObject* DefaultObject, int32 SlotIndex, void* Replacement);
+
+	/** As above, resolving the class default object from a class name. */
+	bool InstallAtVirtualIndex(const char* ClassName, int32 SlotIndex, void* Replacement);
+
+	/**
+	 * As InstallAtVirtualIndex, but taking the displacement in bytes rather than the slot number.
+	 *
+	 * A disassembler shows a virtual call as 'call qword ptr [rax+0E8h]' - 0xE8 there is a byte
+	 * displacement, and the slot is 0xE8/8. Both spellings exist so the number can be passed in
+	 * whichever form it was read, instead of being converted by hand and getting it wrong.
+	 */
+	bool InstallAtVTableOffset(class UObject* DefaultObject, int32 ByteOffset, void* Replacement);
+	bool InstallAtVTableOffset(const char* ClassName, int32 ByteOffset, void* Replacement);
+
 	bool Remove();
 
 	bool IsInstalled() const { return Original != nullptr; }
@@ -1508,6 +1726,61 @@ public:
 		ReturnType (**OutOriginal)(ClassType*, ArgTypes...) = nullptr)
 	{
 		if (!Install(ClassName, FunctionName, ToFunctionAddress(Replacement)))
+			return false;
+
+		if (OutOriginal != nullptr)
+			*OutOriginal = reinterpret_cast<ReturnType (*)(ClassType*, ArgTypes...)>(Original);
+
+		return true;
+	}
+
+	/** Member-function overload of InstallAtVirtualIndex, taking the class default object. */
+	template<typename ClassType, typename ReturnType, typename... ArgTypes>
+	bool InstallAtVirtualIndex(class UObject* DefaultObject, int32 SlotIndex, ReturnType (ClassType::*Replacement)(ArgTypes...),
+		ReturnType (**OutOriginal)(ClassType*, ArgTypes...) = nullptr)
+	{
+		if (!InstallAtVirtualIndex(DefaultObject, SlotIndex, ToFunctionAddress(Replacement)))
+			return false;
+
+		if (OutOriginal != nullptr)
+			*OutOriginal = reinterpret_cast<ReturnType (*)(ClassType*, ArgTypes...)>(Original);
+
+		return true;
+	}
+
+	/** Member-function overload of InstallAtVirtualIndex, taking a class name. */
+	template<typename ClassType, typename ReturnType, typename... ArgTypes>
+	bool InstallAtVirtualIndex(const char* ClassName, int32 SlotIndex, ReturnType (ClassType::*Replacement)(ArgTypes...),
+		ReturnType (**OutOriginal)(ClassType*, ArgTypes...) = nullptr)
+	{
+		if (!InstallAtVirtualIndex(ClassName, SlotIndex, ToFunctionAddress(Replacement)))
+			return false;
+
+		if (OutOriginal != nullptr)
+			*OutOriginal = reinterpret_cast<ReturnType (*)(ClassType*, ArgTypes...)>(Original);
+
+		return true;
+	}
+
+	/** Member-function overloads of InstallAtVTableOffset. */
+	template<typename ClassType, typename ReturnType, typename... ArgTypes>
+	bool InstallAtVTableOffset(class UObject* DefaultObject, int32 ByteOffset, ReturnType (ClassType::*Replacement)(ArgTypes...),
+		ReturnType (**OutOriginal)(ClassType*, ArgTypes...) = nullptr)
+	{
+		if (!InstallAtVTableOffset(DefaultObject, ByteOffset, ToFunctionAddress(Replacement)))
+			return false;
+
+		if (OutOriginal != nullptr)
+			*OutOriginal = reinterpret_cast<ReturnType (*)(ClassType*, ArgTypes...)>(Original);
+
+		return true;
+	}
+
+	template<typename ClassType, typename ReturnType, typename... ArgTypes>
+	bool InstallAtVTableOffset(const char* ClassName, int32 ByteOffset, ReturnType (ClassType::*Replacement)(ArgTypes...),
+		ReturnType (**OutOriginal)(ClassType*, ArgTypes...) = nullptr)
+	{
+		if (!InstallAtVTableOffset(ClassName, ByteOffset, ToFunctionAddress(Replacement)))
 			return false;
 
 		if (OutOriginal != nullptr)
@@ -1617,10 +1890,40 @@ private:
 	struct F##FunctionName##ScriptOverride : SDK_NAMESPACE_NAME ::FScriptFunctionOverride                                          \
 	{                                                                                                                              \
 		using FScriptFunctionOverride::Install;                                                                                    \
+		using FScriptFunctionOverride::InstallAtVirtualIndex;                                                                      \
+		using FScriptFunctionOverride::InstallAtVTableOffset;                                                                      \
                                                                                                                                    \
 		bool Install(const char* ClassName)                                                                                        \
 		{                                                                                                                          \
 			return Install(ClassName, #FunctionName);                                                                              \
+		}                                                                                                                          \
+                                                                                                                                   \
+		/* Names the virtual function table slot outright, for when the thunk resolves to the  */                                  \
+		/* wrong one. The replacement and the pointer that receives the original follow from    */                                  \
+		/* the declaration, exactly as they do for Install.                                     */                                  \
+		bool InstallAtVirtualIndex(const char* ClassName, SDK_NAMESPACE_NAME ::int32 SlotIndex)                                    \
+		{                                                                                                                          \
+			return FScriptFunctionOverride::InstallAtVirtualIndex(ClassName, SlotIndex,                                            \
+				&ThisClass::FunctionName, &ThisClass::FunctionName##_Original);                                                    \
+		}                                                                                                                          \
+                                                                                                                                   \
+		bool InstallAtVirtualIndex(class UObject* DefaultObject, SDK_NAMESPACE_NAME ::int32 SlotIndex)                             \
+		{                                                                                                                          \
+			return FScriptFunctionOverride::InstallAtVirtualIndex(DefaultObject, SlotIndex,                                        \
+				&ThisClass::FunctionName, &ThisClass::FunctionName##_Original);                                                    \
+		}                                                                                                                          \
+                                                                                                                                   \
+		/* Takes the displacement in bytes, as a disassembler shows it, rather than the slot. */                                   \
+		bool InstallAtVTableOffset(const char* ClassName, SDK_NAMESPACE_NAME ::int32 ByteOffset)                                   \
+		{                                                                                                                          \
+			return FScriptFunctionOverride::InstallAtVTableOffset(ClassName, ByteOffset,                                           \
+				&ThisClass::FunctionName, &ThisClass::FunctionName##_Original);                                                    \
+		}                                                                                                                          \
+                                                                                                                                   \
+		bool InstallAtVTableOffset(class UObject* DefaultObject, SDK_NAMESPACE_NAME ::int32 ByteOffset)                            \
+		{                                                                                                                          \
+			return FScriptFunctionOverride::InstallAtVTableOffset(DefaultObject, ByteOffset,                                       \
+				&ThisClass::FunctionName, &ThisClass::FunctionName##_Original);                                                    \
 		}                                                                                                                          \
                                                                                                                                    \
 		bool Install(const char* ClassName, const char* ReflectedFunctionName)                                                     \
@@ -1687,7 +1990,9 @@ struct std::formatter<SDK_NAMESPACE_NAME ::FName> : std::formatter<std::string>
 template <>
 struct std::formatter<SDK_NAMESPACE_NAME ::FString> : std::formatter<std::string>
 {
-	auto format(SDK_NAMESPACE_NAME ::FString String, std::format_context& Context) const
+	/* By reference: an FString owns its buffer now, so taking one by value would copy the string
+	 * out of the game's allocator and back just to print it. */
+	auto format(const SDK_NAMESPACE_NAME ::FString& String, std::format_context& Context) const
 	{
 		return std::formatter<std::string>::format(String.ToString(), Context);
 	}

@@ -32,12 +32,19 @@ public:
 	static class UObject* FindObjectFastImpl(const std::string& Name, EClassCastFlags RequiredType = EClassCastFlags::None);
 	static class UObject* FindObjectImpl(const std::string& FullName, EClassCastFlags RequiredType = EClassCastFlags::None);
 
+	FORCEINLINE bool     IsValid() { return VTable != nullptr && Class != nullptr; }
+
 	std::string GetFullName() const;
 	std::string GetName() const;
 	bool HasTypeFlag(EClassCastFlags TypeFlags) const;
 	bool IsA(EClassCastFlags TypeFlags) const;
 	bool IsA(const class FName& ClassName) const;
 	bool IsA(const class UClass* TypeClass) const;
+	template <typename ClassType = UClass>
+	bool IsA()
+	{
+		return IsA(ClassType::StaticClass());
+	}
 	bool IsDefaultObject() const;
 
 	void ExecuteUbergraph(int32 EntryPoint);
@@ -61,6 +68,13 @@ public:
 	static UEType* FindObjectFast(const std::string& Name, EClassCastFlags RequiredType = EClassCastFlags::None)
 	{
 		return static_cast<UEType*>(FindObjectFastImpl(Name, RequiredType));
+	}
+
+	template<typename UEType>
+	UEType* GetInterfaceAddress()
+	{
+		static void* (*GetInterfaceAddressOriginal)(UObject*, UClass*) = decltype(GetInterfaceAddressOriginal)(InSDKUtils::GetImageBase() + 0xF6B844);
+		return (UEType*)GetInterfaceAddressOriginal(this, UEType::StaticClass());
 	}
 
 	void ProcessEvent(class UFunction* Function, void* Parms) const

@@ -82680,7 +82680,7 @@ DUMPER7_ASSERTS_UCustomCharacterPartAnimInstance_HightowerMangoBody;
 
 // Class FortniteGame.FortControllerComponent_Aircraft
 // 0x0098 (0x0140 - 0x00A8)
-class UFortControllerComponent_Aircraft final : public UFortControllerComponent
+class UFortControllerComponent_Aircraft : public UFortControllerComponent
 {
 public:
 	uint8                                         Pad_A8[0x8];                                       // 0x00A8(0x0008)(Fixing Size After Last Property [ Dumper-7 ])

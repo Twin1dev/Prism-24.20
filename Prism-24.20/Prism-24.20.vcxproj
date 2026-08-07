@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -119,7 +119,7 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>./;./Engine/Source/Runtime/Core/Public;./Engine/Source/Runtime/CoreUObject/Public;./Engine/Source/Runtime/Engine/Classes;./Engine/Source/Runtime/Engine/Public;./Engine/Plugins/Runtime;./FortniteGame/Source/FortniteGame/Public/;./Engine/Restricted/NotForLicensees/Plugins;./Engine/Restricted/NotForLicensees/Plugins/OnlineGameplayFramework/Source;./Engine/Source/Runtime/CoreOnline/Public</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>./;./Engine/Source/Runtime/Core/Public;./Engine/Source/Runtime/CoreUObject/Public;./Engine/Source/Runtime/Engine/Classes;./Engine/Source/Runtime/Engine/Public;./Engine/Plugins/Runtime;./Engine/Plugins/Runtime/ReplicationGraph/Source/Public;./FortniteGame/Source/FortniteGame/Public/;./Engine/Restricted/NotForLicensees/Plugins;./Engine/Restricted/NotForLicensees/Plugins/OnlineGameplayFramework/Source;./Engine/Source/Runtime/CoreOnline/Public</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -141,7 +141,7 @@
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>./;./Engine/Source/Runtime/Core/Public;./Engine/Source/Runtime/CoreUObject/Public;./Engine/Source/Runtime/Engine/Classes;./Engine/Source/Runtime/Engine/Public;./Engine/Plugins/Runtime;./FortniteGame/Source/FortniteGame/Public/;./Engine/Restricted/NotForLicensees/Plugins;./Engine/Restricted/NotForLicensees/Plugins/OnlineGameplayFramework/Source;./Engine/Source/Runtime/CoreOnline/Public</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>./;./Engine/Source/Runtime/Core/Public;./Engine/Source/Runtime/CoreUObject/Public;./Engine/Source/Runtime/Engine/Classes;./Engine/Source/Runtime/Engine/Public;./Engine/Plugins/Runtime;./Engine/Plugins/Runtime/ReplicationGraph/Source/Public;./FortniteGame/Source/FortniteGame/Public/;./Engine/Restricted/NotForLicensees/Plugins;./Engine/Restricted/NotForLicensees/Plugins/OnlineGameplayFramework/Source;./Engine/Source/Runtime/CoreOnline/Public</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -153,13 +153,31 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="Engine\Plugins\Runtime\GameplayAbilities\Source\GameplayAbilities\Public\AbilitySystemComponent.h" />
     <ClInclude Include="Engine\Plugins\Runtime\ThirdParty\MinHook\MinHook.h" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Plugins\OnlineGameplayFramework\Source\McpProfileSys\Public\McpProfileGroup.h" />
     <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\PropertyFixup.hpp" />
     <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\SDK.hpp" />
     <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\SDK\Interception.hpp" />
     <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\SDK\MemoryPatch.hpp" />
     <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\SDK\ModuleManager.hpp" />
     <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\ContainerPlatform.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\ContainerTypes.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\UnrealMemory.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\UnrealTemplate.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\MathUtility.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\TypeHash.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\ContainerAllocationPolicies.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\ContainersFwd.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\Array.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\ArrayView.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\BitArray.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\SparseArray.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\Set.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\Map.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\UnrealString.hpp" />
+    <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UnrealContainers\ContainerCompat.hpp" />
     <ClInclude Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\UtfN.hpp" />
     <ClInclude Include="Engine\Source\Runtime\Core\Public\CoreGlobals.h" />
     <ClInclude Include="Engine\Source\Runtime\Core\Public\Logging\LogMacros.h" />
@@ -168,9 +186,35 @@
     <ClInclude Include="Engine\Source\Runtime\Engine\Classes\Engine\World.h" />
     <ClInclude Include="FortniteGame\Plugins\Prism\Source\Prism\Public\PrismDedicatedPatch.h" />
     <ClInclude Include="FortniteGame\Source\FortniteGame\Public\Athena\FortGameModeAthena.h" />
+    <ClInclude Include="Engine\Plugins\Runtime\ReplicationGraph\Source\Public\ReplicationGraph.h" />
+    <ClInclude Include="Engine\Plugins\Runtime\ReplicationGraph\Source\Public\ReplicationGraphTypes.h" />
+    <ClInclude Include="Engine\Source\Runtime\Core\Public\Containers\Array.h" />
+    <ClInclude Include="Engine\Source\Runtime\Core\Public\Containers\Map.h" />
+    <ClInclude Include="Engine\Source\Runtime\Core\Public\Delegates\DelegateCombinations.h" />
+    <ClInclude Include="Engine\Source\Runtime\Core\Public\Math\UnrealMathUtility.h" />
+    <ClInclude Include="Engine\Source\Runtime\Core\Public\Templates\SharedPointer.h" />
+    <ClInclude Include="Engine\Source\Runtime\CoreUObject\Public\Templates\Casts.h" />
+    <ClInclude Include="Engine\Source\Runtime\CoreUObject\Public\UObject\ClassHierarchyOverride.h" />
+    <ClInclude Include="Engine\Source\Runtime\CoreUObject\Public\UObject\ObjectKey.h" />
+    <ClInclude Include="Engine\Source\Runtime\Engine\Classes\Engine\ActorChannel.h" />
+    <ClInclude Include="Engine\Source\Runtime\Engine\Classes\Engine\NetConnection.h" />
+    <ClInclude Include="Engine\Source\Runtime\Engine\Classes\GameFramework\Actor.h" />
+    <ClInclude Include="Engine\Source\Runtime\Engine\Classes\GameFramework\PlayerController.h" />
+    <ClInclude Include="Engine\Source\Runtime\Engine\Public\Net\EngineAddresses.h" />
+    <ClInclude Include="FortniteGame\Source\FortniteGame\Public\Athena\FortPlayerControllerAthena.h" />
+    <ClInclude Include="FortniteGame\Source\FortniteGame\Public\Building\BuildingSMActor.h" />
+    <ClInclude Include="FortniteGame\Source\FortniteGame\Public\Components\FortControllerComponent_Aircraft.h" />
+    <ClInclude Include="FortniteGame\Source\FortniteGame\Public\Items\FortInventory.h" />
+    <ClInclude Include="FortniteGame\Source\FortniteGame\Public\Items\FortPickup.h" />
+    <ClInclude Include="FortniteGame\Source\FortniteGame\Public\Items\FortWorldItem.h" />
+    <ClInclude Include="FortniteGame\Source\FortniteGame\Public\Online\FortReplicationGraph.h" />
+    <ClInclude Include="FortniteGame\Source\FortniteGame\Public\Pawns\FortPhysicsPawn.h" />
+    <ClInclude Include="FortniteGame\Source\FortniteGame\Public\Pawns\FortPlayerPawn.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Engine\Plugins\Runtime\GameplayAbilities\Source\GameplayAbilities\Private\AbilitySystemComponent_Abilities.cpp" />
+    <ClCompile Include="Engine\Restricted\NotForLicensees\Plugins\OnlineGameplayFramework\Source\McpProfileSys\Private\McpProfileGroup.cpp" />
     <ClCompile Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\SDK\Basic.cpp" />
     <ClCompile Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\SDK\Interception.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -182,11 +226,20 @@
     <ClCompile Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\SDK\Engine_functions.cpp" />
     <ClCompile Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\SDK\FortniteGame_functions.cpp" />
     <ClCompile Include="Engine\Restricted\NotForLicensees\Source\ThirdParty\SoftwareDevelopmentKit\SDK\GameplayAbilities_functions.cpp" />
+    <ClCompile Include="Engine\Plugins\Runtime\ReplicationGraph\Source\Private\ReplicationGraph.cpp" />
+    <ClCompile Include="Engine\Plugins\Runtime\ReplicationGraph\Source\Private\ReplicationGraphTypes.cpp" />
+    <ClCompile Include="FortniteGame\Source\FortniteGame\Private\Athena\FortPlayerControllerAthena.cpp" />
+    <ClCompile Include="FortniteGame\Source\FortniteGame\Private\Building\BuildingSMActor.cpp" />
+    <ClCompile Include="FortniteGame\Source\FortniteGame\Private\Components\FortControllerComponent_Aircraft.cpp" />
+    <ClCompile Include="FortniteGame\Source\FortniteGame\Private\Online\FortReplicationGraph.cpp" />
+    <ClCompile Include="Engine\Source\Runtime\Engine\Private\UnrealEngine.cpp" />
     <ClCompile Include="Engine\Source\Runtime\Engine\Private\NetDriver.cpp" />
     <ClCompile Include="Engine\Source\Runtime\Engine\Private\World.cpp" />
     <ClCompile Include="Engine\Source\Runtime\Launch\Private\Launch.cpp" />
     <ClCompile Include="FortniteGame\Plugins\Prism\Source\Prism\Private\PrismDedicatedPatch.cpp" />
     <ClCompile Include="FortniteGame\Source\FortniteGame\Private\Athena\FortGameModeAthena.cpp" />
+    <ClCompile Include="FortniteGame\Source\FortniteGame\Private\Items\FortInventory.cpp" />
+    <ClCompile Include="FortniteGame\Source\FortniteGame\Private\Pawns\FortPlayerPawn.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>

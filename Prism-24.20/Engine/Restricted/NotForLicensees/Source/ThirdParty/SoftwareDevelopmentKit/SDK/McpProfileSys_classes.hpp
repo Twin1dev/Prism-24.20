@@ -115,7 +115,7 @@ DUMPER7_ASSERTS_UMcpProfile;
 
 // Class McpProfileSys.McpProfileGroup
 // 0x0258 (0x0280 - 0x0028)
-class alignas(0x10) UMcpProfileGroup final : public UObject
+class alignas(0x10) UMcpProfileGroup : public UObject
 {
 public:
 	uint8                                         Pad_28[0xB4];                                      // 0x0028(0x00B4)(Fixing Size After Last Property [ Dumper-7 ])

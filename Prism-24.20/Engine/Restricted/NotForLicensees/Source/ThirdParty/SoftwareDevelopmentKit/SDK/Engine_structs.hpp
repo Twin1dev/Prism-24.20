@@ -6419,6 +6419,13 @@ struct FInputDevicePropertyHandle final
 {
 public:
 	uint32                                        InternalId;                                        // 0x0000(0x0004)(ZeroConstructor, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPrivate)
+
+	// The handle is nothing but its id. Declared next to the type so that the unqualified calls a
+	// key funcs struct makes find them through argument-dependent lookup.
+	friend bool operator==(const FInputDevicePropertyHandle& A, const FInputDevicePropertyHandle& B) { return A.InternalId == B.InternalId; }
+	friend bool operator!=(const FInputDevicePropertyHandle& A, const FInputDevicePropertyHandle& B) { return A.InternalId != B.InternalId; }
+
+	friend uint32 GetTypeHash(const FInputDevicePropertyHandle& Handle) { return Handle.InternalId; }
 };
 DUMPER7_ASSERTS_FInputDevicePropertyHandle;
 
@@ -6874,6 +6881,38 @@ struct FUniqueNetIdRepl final : public FUniqueNetIdWrapper
 public:
 	uint8                                         Pad_1[0x1F];                                       // 0x0001(0x001F)(Fixing Size After Last Property [ Dumper-7 ])
 	TArray<uint8>                                 ReplicationBytes;                                  // 0x0020(0x0010)(ZeroConstructor, Transient, Protected, NativeAccessSpecifierProtected)
+
+	// Both go by the replicated bytes: the id object itself is behind the padding above, which the
+	// generated struct does not describe. Declared next to the type so that the unqualified calls a
+	// key funcs struct makes find them through argument-dependent lookup.
+	friend bool operator==(const FUniqueNetIdRepl& A, const FUniqueNetIdRepl& B)
+	{
+		if (A.ReplicationBytes.Num() != B.ReplicationBytes.Num())
+			return false;
+
+		for (int32 Index = 0; Index < A.ReplicationBytes.Num(); ++Index)
+		{
+			if (A.ReplicationBytes[Index] != B.ReplicationBytes[Index])
+				return false;
+		}
+
+		return true;
+	}
+
+	friend bool operator!=(const FUniqueNetIdRepl& A, const FUniqueNetIdRepl& B) { return !(A == B); }
+
+	friend uint32 GetTypeHash(const FUniqueNetIdRepl& Id)
+	{
+		uint32 Hash = 0;
+
+		for (int32 Index = 0; Index < Id.ReplicationBytes.Num(); ++Index)
+		{
+			// The engine's HashCombineFast.
+			Hash = Hash ^ (Id.ReplicationBytes[Index] + 0x9e3779b9 + (Hash << 6) + (Hash >> 2));
+		}
+
+		return Hash;
+	}
 };
 DUMPER7_ASSERTS_FUniqueNetIdRepl;
 

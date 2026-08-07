@@ -69,6 +69,13 @@ struct FGameplayTag
 {
 public:
 	class FName                                   TagName;                                           // 0x0000(0x0004)(Edit, ZeroConstructor, EditConst, SaveGame, IsPlainOldData, NoDestructor, Protected, HasGetValueTypeHash, NativeAccessSpecifierProtected)
+
+	// A tag is nothing but its name, so both of these are the name's. Declared next to the type so
+	// that the unqualified calls a key funcs struct makes find them through argument-dependent lookup.
+	friend bool operator==(const FGameplayTag& A, const FGameplayTag& B) { return A.TagName == B.TagName; }
+	friend bool operator!=(const FGameplayTag& A, const FGameplayTag& B) { return A.TagName != B.TagName; }
+
+	friend uint32 GetTypeHash(const FGameplayTag& Tag) { return GetTypeHash(Tag.TagName); }
 };
 DUMPER7_ASSERTS_FGameplayTag;
 

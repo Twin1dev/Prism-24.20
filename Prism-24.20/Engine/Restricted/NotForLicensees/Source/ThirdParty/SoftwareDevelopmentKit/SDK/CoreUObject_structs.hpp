@@ -385,6 +385,24 @@ struct FTopLevelAssetPath final
 public:
 	class FName                                   PackageName;                                       // 0x0000(0x0004)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPrivate)
 	class FName                                   AssetName;                                         // 0x0004(0x0004)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPrivate)
+
+	// A path is its two names. Declared next to the type so that the unqualified calls a key funcs
+	// struct makes find them through argument-dependent lookup.
+	friend bool operator==(const FTopLevelAssetPath& A, const FTopLevelAssetPath& B)
+	{
+		return A.PackageName == B.PackageName && A.AssetName == B.AssetName;
+	}
+
+	friend bool operator!=(const FTopLevelAssetPath& A, const FTopLevelAssetPath& B) { return !(A == B); }
+
+	friend uint32 GetTypeHash(const FTopLevelAssetPath& Path)
+	{
+		const uint32 PackageHash = GetTypeHash(Path.PackageName);
+		const uint32 AssetHash = GetTypeHash(Path.AssetName);
+
+		// The engine's HashCombineFast.
+		return PackageHash ^ (AssetHash + 0x9e3779b9 + (PackageHash << 6) + (PackageHash >> 2));
+	}
 };
 DUMPER7_ASSERTS_FTopLevelAssetPath;
 
@@ -437,138 +455,760 @@ DUMPER7_ASSERTS_FARFilter;
 struct FVector
 {
 public:
+	/* Kept as a compatibility alias for the previous SDK vector; UE spells this FReal. */
 	using UnderlayingType = double;
+	using FReal = double;
 
 	double                                        X;                                                 // 0x0000(0x0008)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
 	double                                        Y;                                                 // 0x0008(0x0008)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
 	double                                        Z;                                                 // 0x0010(0x0008)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
 
+	static constexpr int32 NumComponents = 3;
+
 public:
-	constexpr FVector(UnderlayingType X = 0, UnderlayingType Y = 0, UnderlayingType Z = 0)
-		: X(X), Y(Y), Z(Z)
+	/** A zero vector (0,0,0) */
+	static const FVector ZeroVector;
+	/** One vector (1,1,1) */
+	static const FVector OneVector;
+	/** Unreal up vector (0,0,1) */
+	static const FVector UpVector;
+	/** Unreal down vector (0,0,-1) */
+	static const FVector DownVector;
+	/** Unreal forward vector (1,0,0) */
+	static const FVector ForwardVector;
+	/** Unreal backward vector (-1,0,0) */
+	static const FVector BackwardVector;
+	/** Unreal right vector (0,1,0) */
+	static const FVector RightVector;
+	/** Unreal left vector (0,-1,0) */
+	static const FVector LeftVector;
+	/** Unit X axis vector (1,0,0) */
+	static const FVector XAxisVector;
+	/** Unit Y axis vector (0,1,0) */
+	static const FVector YAxisVector;
+	/** Unit Z axis vector (0,0,1) */
+	static const FVector ZAxisVector;
+
+	static inline FVector Zero() { return ZeroVector; }
+	static inline FVector One() { return OneVector; }
+	static inline FVector UnitX() { return XAxisVector; }
+	static inline FVector UnitY() { return YAxisVector; }
+	static inline FVector UnitZ() { return ZAxisVector; }
+
+public:
+	/*
+	* Deviation from UE: UE's default constructor leaves the components
+	* uninitialized. Zeroing is kept from the previous SDK vector so that the
+	* thousands of generated structs holding an FVector by value keep behaving
+	* the way the rest of this SDK already assumes.
+	*/
+	constexpr FVector()
+		: X(0.0), Y(0.0), Z(0.0)
 	{
 	}
-	constexpr FVector(const FVector& other)
-		: X(other.X), Y(other.Y), Z(other.Z)
+	constexpr FVector(const FVector& Other)
+		: X(Other.X), Y(Other.Y), Z(Other.Z)
 	{
 	}
-	FVector& Normalize()
+	/** Sets all components to InF, as UE does; note this is explicit, so FVector(5.0) is (5,5,5) and not the old SDK's (5,0,0). */
+	explicit constexpr FVector(double InF)
+		: X(InF), Y(InF), Z(InF)
 	{
-		*this /= Magnitude();
-	
-		return *this;
 	}
-	FVector& operator*=(UnderlayingType Scalar)
+	constexpr FVector(double InX, double InY, double InZ)
+		: X(InX), Y(InY), Z(InZ)
 	{
-		*this = *this * Scalar;
-	
-		return *this;
 	}
-	FVector& operator*=(const FVector& Other)
+	explicit FVector(EForceInit)
+		: X(0.0), Y(0.0), Z(0.0)
 	{
-		*this = *this * Other;
-	
-		return *this;
 	}
-	FVector& operator+=(const FVector& Other)
+	explicit FVector(const struct FVector2D V, double InZ);
+	FVector(const struct FVector4& V);
+
+	FVector& operator=(const FVector& Other)
 	{
-		*this = *this + Other;
-	
-		return *this;
-	}
-	FVector& operator-=(const FVector& Other)
-	{
-		*this = *this - Other;
-	
-		return *this;
-	}
-	FVector& operator/=(UnderlayingType Scalar)
-	{
-		*this = *this / Scalar;
-	
-		return *this;
-	}
-	FVector& operator/=(const FVector& Other)
-	{
-		*this = *this / Other;
-	
-		return *this;
-	}
-	FVector& operator=(const FVector& other)
-	{
-		X = other.X;
-		Y = other.Y;
-		Z = other.Z;
-	
+		X = Other.X;
+		Y = Other.Y;
+		Z = Other.Z;
+
 		return *this;
 	}
 
-	UnderlayingType Dot(const FVector& Other) const
+	/* --- Products ---------------------------------------------------------- */
+
+	/** Calculate cross product between this and another vector. */
+	FVector operator^(const FVector& V) const
 	{
-		return (X * Other.X) + (Y * Other.Y) + (Z * Other.Z);
+		return FVector
+			(
+			Y * V.Z - Z * V.Y,
+			Z * V.X - X * V.Z,
+			X * V.Y - Y * V.X
+			);
 	}
-	UnderlayingType GetDistanceTo(const FVector& Other) const
+	FVector Cross(const FVector& V2) const { return *this ^ V2; }
+	static FVector CrossProduct(const FVector& A, const FVector& B) { return A ^ B; }
+
+	/** Calculate the dot product between this and another vector. */
+	double operator|(const FVector& V) const { return X * V.X + Y * V.Y + Z * V.Z; }
+	double Dot(const FVector& V) const { return *this | V; }
+	static double DotProduct(const FVector& A, const FVector& B) { return A | B; }
+
+	/* --- Arithmetic -------------------------------------------------------- */
+
+	FVector operator+(const FVector& V) const { return FVector(X + V.X, Y + V.Y, Z + V.Z); }
+	FVector operator-(const FVector& V) const { return FVector(X - V.X, Y - V.Y, Z - V.Z); }
+	FVector operator*(const FVector& V) const { return FVector(X * V.X, Y * V.Y, Z * V.Z); }
+	FVector operator/(const FVector& V) const { return FVector(X / V.X, Y / V.Y, Z / V.Z); }
+
+	FVector operator-(double Bias) const { return FVector(X - Bias, Y - Bias, Z - Bias); }
+	FVector operator+(double Bias) const { return FVector(X + Bias, Y + Bias, Z + Bias); }
+	FVector operator*(double Scale) const { return FVector(X * Scale, Y * Scale, Z * Scale); }
+	FVector operator/(double Scale) const
 	{
-		FVector DiffVector = Other - *this;
-	
-		return DiffVector.Magnitude();
+		const double RScale = 1.0 / Scale;
+		return FVector(X * RScale, Y * RScale, Z * RScale);
 	}
-	UnderlayingType GetDistanceToInMeters(const FVector& Other) const
+
+	FVector operator-() const { return FVector(-X, -Y, -Z); }
+
+	FVector operator+=(const FVector& V) { X += V.X; Y += V.Y; Z += V.Z; return *this; }
+	FVector operator-=(const FVector& V) { X -= V.X; Y -= V.Y; Z -= V.Z; return *this; }
+	FVector operator*=(const FVector& V) { X *= V.X; Y *= V.Y; Z *= V.Z; return *this; }
+	FVector operator/=(const FVector& V) { X /= V.X; Y /= V.Y; Z /= V.Z; return *this; }
+
+	FVector operator*=(double Scale) { X *= Scale; Y *= Scale; Z *= Scale; return *this; }
+	FVector operator/=(double Scale)
 	{
-		return GetDistanceTo(Other) * static_cast<UnderlayingType>(0.01);
+		const double RV = 1.0 / Scale;
+		X *= RV; Y *= RV; Z *= RV;
+		return *this;
 	}
-	FVector GetNormalized() const
+
+	/* --- Comparison -------------------------------------------------------- */
+
+	bool operator==(const FVector& V) const { return X == V.X && Y == V.Y && Z == V.Z; }
+	bool operator!=(const FVector& V) const { return X != V.X || Y != V.Y || Z != V.Z; }
+
+	bool Equals(const FVector& V, double Tolerance = UE_DOUBLE_KINDA_SMALL_NUMBER) const
 	{
-		return *this / Magnitude();
+		return FMath::Abs(X - V.X) <= Tolerance && FMath::Abs(Y - V.Y) <= Tolerance && FMath::Abs(Z - V.Z) <= Tolerance;
 	}
-	bool IsZero() const
+	bool AllComponentsEqual(double Tolerance = UE_DOUBLE_KINDA_SMALL_NUMBER) const
 	{
-		return X == 0 && Y == 0 && Z == 0;
+		return FMath::Abs(X - Y) <= Tolerance && FMath::Abs(X - Z) <= Tolerance && FMath::Abs(Y - Z) <= Tolerance;
 	}
-	UnderlayingType Magnitude() const
+
+	/* --- Component access --------------------------------------------------- */
+
+	double& operator[](int32 Index) { return Component(Index); }
+	double operator[](int32 Index) const { return Component(Index); }
+
+	/* X, Y and Z are contiguous doubles (see DUMPER7_ASSERTS_FVector), which is
+	 * what lets this stand in for UE's XYZ[] union member. */
+	double& Component(int32 Index) { return (&X)[Index]; }
+	double Component(int32 Index) const { return (&X)[Index]; }
+
+	bool IsValidIndex(int32 Index) const { return (Index >= 0) && (Index < NumComponents); }
+
+	double GetComponentForAxis(EAxis Axis) const
 	{
-		return std::sqrt((X * X) + (Y * Y) + (Z * Z));
+		switch (Axis)
+		{
+		case EAxis::X:
+			return X;
+		case EAxis::Y:
+			return Y;
+		case EAxis::Z:
+			return Z;
+		case EAxis::None:
+		default:
+			return 0.0;
+		}
 	}
-	bool operator!=(const FVector& Other) const
+	void SetComponentForAxis(EAxis Axis, double InComponent)
 	{
-		return X != Other.X || Y != Other.Y || Z != Other.Z;
+		switch (Axis)
+		{
+		case EAxis::X:
+			X = InComponent;
+			break;
+		case EAxis::Y:
+			Y = InComponent;
+			break;
+		case EAxis::Z:
+			Z = InComponent;
+			break;
+		case EAxis::None:
+		default:
+			break;
+		}
 	}
-	FVector operator*(UnderlayingType Scalar) const
+
+	void Set(double InX, double InY, double InZ) { X = InX; Y = InY; Z = InZ; }
+
+	/* --- Component-wise queries --------------------------------------------- */
+
+	double GetMax() const { return FMath::Max(FMath::Max(X, Y), Z); }
+	double GetAbsMax() const { return FMath::Max(FMath::Max(FMath::Abs(X), FMath::Abs(Y)), FMath::Abs(Z)); }
+	double GetMin() const { return FMath::Min(FMath::Min(X, Y), Z); }
+	double GetAbsMin() const { return FMath::Min(FMath::Min(FMath::Abs(X), FMath::Abs(Y)), FMath::Abs(Z)); }
+
+	FVector ComponentMin(const FVector& Other) const { return FVector(FMath::Min(X, Other.X), FMath::Min(Y, Other.Y), FMath::Min(Z, Other.Z)); }
+	FVector ComponentMax(const FVector& Other) const { return FVector(FMath::Max(X, Other.X), FMath::Max(Y, Other.Y), FMath::Max(Z, Other.Z)); }
+	FVector GetAbs() const { return FVector(FMath::Abs(X), FMath::Abs(Y), FMath::Abs(Z)); }
+
+	/* --- Length ------------------------------------------------------------- */
+
+	double Size() const { return FMath::Sqrt(X * X + Y * Y + Z * Z); }
+	double Length() const { return Size(); }
+	double SizeSquared() const { return X * X + Y * Y + Z * Z; }
+	double SquaredLength() const { return SizeSquared(); }
+	double Size2D() const { return FMath::Sqrt(X * X + Y * Y); }
+	double SizeSquared2D() const { return X * X + Y * Y; }
+
+	bool IsNearlyZero(double Tolerance = UE_DOUBLE_KINDA_SMALL_NUMBER) const
 	{
-		return { X * Scalar, Y * Scalar, Z * Scalar };
+		return
+			FMath::Abs(X) <= Tolerance
+			&& FMath::Abs(Y) <= Tolerance
+			&& FMath::Abs(Z) <= Tolerance;
 	}
-	FVector operator*(const FVector& Other) const
+	bool IsZero() const { return X == 0.0 && Y == 0.0 && Z == 0.0; }
+
+	bool IsUnit(double LengthSquaredTolerance = UE_DOUBLE_KINDA_SMALL_NUMBER) const
 	{
-		return { X * Other.X, Y * Other.Y, Z * Other.Z };
+		return FMath::Abs(1.0 - SizeSquared()) < LengthSquaredTolerance;
 	}
-	FVector operator+(const FVector& Other) const
+	bool IsNormalized() const { return (FMath::Abs(1.0 - SizeSquared()) < UE_THRESH_VECTOR_NORMALIZED); }
+
+	/* --- Normalization ------------------------------------------------------ */
+
+	bool Normalize(double Tolerance = UE_DOUBLE_SMALL_NUMBER)
 	{
-		return { X + Other.X, Y + Other.Y, Z + Other.Z };
+		const double SquareSum = X * X + Y * Y + Z * Z;
+		if (SquareSum > Tolerance)
+		{
+			const double Scale = FMath::InvSqrt(SquareSum);
+			X *= Scale; Y *= Scale; Z *= Scale;
+			return true;
+		}
+		return false;
 	}
-	FVector operator-(const FVector& Other) const
+
+	FVector GetUnsafeNormal() const
 	{
-		return { X - Other.X, Y - Other.Y, Z - Other.Z };
+		const double Scale = FMath::InvSqrt(X * X + Y * Y + Z * Z);
+		return FVector(X * Scale, Y * Scale, Z * Scale);
 	}
-	FVector operator/(UnderlayingType Scalar) const
+	FVector GetUnsafeNormal2D() const
 	{
-		if (Scalar == 0)
+		const double Scale = FMath::InvSqrt(X * X + Y * Y);
+		return FVector(X * Scale, Y * Scale, 0);
+	}
+
+	FVector GetSafeNormal(double Tolerance = UE_DOUBLE_SMALL_NUMBER, const FVector& ResultIfZero = ZeroVector) const
+	{
+		const double SquareSum = X * X + Y * Y + Z * Z;
+
+		// Not sure if it's safe to add tolerance in there. Might introduce too many errors
+		if (SquareSum == 1.0)
+		{
 			return *this;
-	
-		return { X / Scalar, Y / Scalar, Z / Scalar };
+		}
+		else if (SquareSum < Tolerance)
+		{
+			return ResultIfZero;
+		}
+		const double Scale = FMath::InvSqrt(SquareSum);
+		return FVector(X * Scale, Y * Scale, Z * Scale);
 	}
-	FVector operator/(const FVector& Other) const
+
+	FVector GetSafeNormal2D(double Tolerance = UE_DOUBLE_SMALL_NUMBER, const FVector& ResultIfZero = ZeroVector) const
 	{
-		if (Other.X == 0 || Other.Y == 0 || Other.Z == 0)
+		const double SquareSum = X * X + Y * Y;
+
+		// Not sure if it's safe to add tolerance in there. Might introduce too many errors
+		if (SquareSum == 1.0)
+		{
+			if (Z == 0.0)
+			{
+				return *this;
+			}
+			else
+			{
+				return FVector(X, Y, 0.0);
+			}
+		}
+		else if (SquareSum < Tolerance)
+		{
+			return ResultIfZero;
+		}
+
+		const double Scale = FMath::InvSqrt(SquareSum);
+		return FVector(X * Scale, Y * Scale, 0.0);
+	}
+
+	void ToDirectionAndLength(FVector& OutDir, double& OutLength) const
+	{
+		OutLength = Size();
+		if (OutLength > UE_DOUBLE_SMALL_NUMBER)
+		{
+			double OneOverLength = 1.0 / OutLength;
+			OutDir = FVector(X * OneOverLength, Y * OneOverLength, Z * OneOverLength);
+		}
+		else
+		{
+			OutDir = ZeroVector;
+		}
+	}
+	void ToDirectionAndLength(FVector& OutDir, float& OutLength) const
+	{
+		OutLength = (float)Size();
+		if (OutLength > UE_SMALL_NUMBER)
+		{
+			float OneOverLength = 1.0f / OutLength;
+			OutDir = FVector(X * OneOverLength, Y * OneOverLength, Z * OneOverLength);
+		}
+		else
+		{
+			OutDir = ZeroVector;
+		}
+	}
+
+	FVector GetSignVector() const
+	{
+		return FVector
+			(
+			FMath::FloatSelect(X, 1.0, -1.0),
+			FMath::FloatSelect(Y, 1.0, -1.0),
+			FMath::FloatSelect(Z, 1.0, -1.0)
+			);
+	}
+
+	FVector Projection() const
+	{
+		const double RZ = 1.0 / Z;
+		return FVector(X * RZ, Y * RZ, 1);
+	}
+
+	/* --- Clamping and snapping ---------------------------------------------- */
+
+	FVector GridSnap(const double& GridSz) const
+	{
+		return FVector(FMath::GridSnap(X, GridSz), FMath::GridSnap(Y, GridSz), FMath::GridSnap(Z, GridSz));
+	}
+
+	FVector BoundToCube(double Radius) const
+	{
+		return FVector
+			(
+			FMath::Clamp(X, -Radius, Radius),
+			FMath::Clamp(Y, -Radius, Radius),
+			FMath::Clamp(Z, -Radius, Radius)
+			);
+	}
+
+	FVector BoundToBox(const FVector& Min, const FVector& Max) const
+	{
+		return FVector
+			(
+			FMath::Clamp(X, Min.X, Max.X),
+			FMath::Clamp(Y, Min.Y, Max.Y),
+			FMath::Clamp(Z, Min.Z, Max.Z)
+			);
+	}
+
+	FVector GetClampedToSize(double Min, double Max) const
+	{
+		double VecSize = Size();
+		const FVector VecDir = (VecSize > UE_DOUBLE_SMALL_NUMBER) ? (*this / VecSize) : ZeroVector;
+
+		VecSize = FMath::Clamp(VecSize, Min, Max);
+
+		return VecDir * VecSize;
+	}
+
+	FVector GetClampedToSize2D(double Min, double Max) const
+	{
+		double VecSize2D = Size2D();
+		const FVector VecDir = (VecSize2D > UE_DOUBLE_SMALL_NUMBER) ? (*this / VecSize2D) : ZeroVector;
+
+		VecSize2D = FMath::Clamp(VecSize2D, Min, Max);
+
+		return FVector(VecSize2D * VecDir.X, VecSize2D * VecDir.Y, Z);
+	}
+
+	FVector GetClampedToMaxSize(double MaxSize) const
+	{
+		if (MaxSize < UE_DOUBLE_KINDA_SMALL_NUMBER)
+		{
+			return ZeroVector;
+		}
+
+		const double VSq = SizeSquared();
+		if (VSq > FMath::Square(MaxSize))
+		{
+			const double Scale = MaxSize * FMath::InvSqrt(VSq);
+			return FVector(X * Scale, Y * Scale, Z * Scale);
+		}
+		else
+		{
 			return *this;
-	
-		return { X / Other.X, Y / Other.Y, Z / Other.Z };
+		}
 	}
-	bool operator==(const FVector& Other) const
+
+	FVector GetClampedToMaxSize2D(double MaxSize) const
 	{
-		return X == Other.X && Y == Other.Y && Z == Other.Z;
+		if (MaxSize < UE_DOUBLE_KINDA_SMALL_NUMBER)
+		{
+			return FVector(0.0, 0.0, Z);
+		}
+
+		const double VSq2D = SizeSquared2D();
+		if (VSq2D > FMath::Square(MaxSize))
+		{
+			const double Scale = MaxSize * FMath::InvSqrt(VSq2D);
+			return FVector(X * Scale, Y * Scale, Z);
+		}
+		else
+		{
+			return *this;
+		}
 	}
+
+	void AddBounded(const FVector& V, double Radius = 32767.0)
+	{
+		*this = (*this + V).BoundToCube(Radius);
+	}
+
+	FVector Reciprocal() const
+	{
+		FVector RecVector;
+		if (X != 0.0)
+		{
+			RecVector.X = 1.0 / X;
+		}
+		else
+		{
+			RecVector.X = UE_DOUBLE_BIG_NUMBER;
+		}
+		if (Y != 0.0)
+		{
+			RecVector.Y = 1.0 / Y;
+		}
+		else
+		{
+			RecVector.Y = UE_DOUBLE_BIG_NUMBER;
+		}
+		if (Z != 0.0)
+		{
+			RecVector.Z = 1.0 / Z;
+		}
+		else
+		{
+			RecVector.Z = UE_DOUBLE_BIG_NUMBER;
+		}
+
+		return RecVector;
+	}
+
+	bool IsUniform(double Tolerance = UE_DOUBLE_KINDA_SMALL_NUMBER) const { return AllComponentsEqual(Tolerance); }
+
+	/* --- Mirroring, rotation, projection ------------------------------------ */
+
+	FVector MirrorByVector(const FVector& MirrorNormal) const
+	{
+		return *this - MirrorNormal * (2.0 * (*this | MirrorNormal));
+	}
+	FVector MirrorByPlane(const struct FPlane& Plane) const;
+
+	FVector RotateAngleAxis(const double AngleDeg, const FVector& Axis) const
+	{
+		return RotateAngleAxisRad(FMath::DegreesToRadians(AngleDeg), Axis);
+	}
+
+	FVector RotateAngleAxisRad(const double AngleRad, const FVector& Axis) const
+	{
+		double S, C;
+		FMath::SinCos(&S, &C, AngleRad);
+
+		const double XX = Axis.X * Axis.X;
+		const double YY = Axis.Y * Axis.Y;
+		const double ZZ = Axis.Z * Axis.Z;
+
+		const double XY = Axis.X * Axis.Y;
+		const double YZ = Axis.Y * Axis.Z;
+		const double ZX = Axis.Z * Axis.X;
+
+		const double XS = Axis.X * S;
+		const double YS = Axis.Y * S;
+		const double ZS = Axis.Z * S;
+
+		const double OMC = 1.0 - C;
+
+		return FVector(
+			(OMC * XX + C) * X + (OMC * XY - ZS) * Y + (OMC * ZX + YS) * Z,
+			(OMC * XY + ZS) * X + (OMC * YY + C) * Y + (OMC * YZ - XS) * Z,
+			(OMC * ZX - YS) * X + (OMC * YZ + XS) * Y + (OMC * ZZ + C) * Z
+			);
+	}
+
+	double CosineAngle2D(FVector B) const
+	{
+		FVector A(*this);
+		A.Z = 0.0;
+		B.Z = 0.0;
+		A.Normalize();
+		B.Normalize();
+		return A | B;
+	}
+
+	FVector ProjectOnTo(const FVector& A) const { return (A * ((*this | A) / (A | A))); }
+	FVector ProjectOnToNormal(const FVector& Normal) const { return (Normal * (*this | Normal)); }
+
+	/** Return the TRotator orientation corresponding to the direction in which the vector points. Sets Yaw and Pitch to the proper numbers, and sets Roll to zero. */
+	struct FRotator ToOrientationRotator() const;
+	/** Return the Quaternion orientation corresponding to the direction in which the vector points. */
+	struct FQuat ToOrientationQuat() const;
+	/** Alias for ToOrientationRotator(). */
+	struct FRotator Rotation() const;
+
+	void FindBestAxisVectors(FVector& Axis1, FVector& Axis2) const
+	{
+		const double NX = FMath::Abs(X);
+		const double NY = FMath::Abs(Y);
+		const double NZ = FMath::Abs(Z);
+
+		// Find best basis vectors.
+		if (NZ > NX && NZ > NY)	Axis1 = FVector(1, 0, 0);
+		else					Axis1 = FVector(0, 0, 1);
+
+		FVector Tmp = Axis1 - *this * (Axis1 | *this);
+		Axis1 = Tmp.GetSafeNormal();
+		Axis2 = Axis1 ^ *this;
+	}
+
+	void UnwindEuler()
+	{
+		X = FMath::UnwindDegrees(X);
+		Y = FMath::UnwindDegrees(Y);
+		Z = FMath::UnwindDegrees(Z);
+	}
+
+	bool ContainsNaN() const
+	{
+		return (!FMath::IsFinite(X) ||
+				!FMath::IsFinite(Y) ||
+				!FMath::IsFinite(Z));
+	}
+
+	/* --- Text --------------------------------------------------------------- */
+
+	FString ToString() const;
+	FString ToCompactString() const;
+
+	/** Convert a direction vector into a 'heading' angle. @return 'Heading' angle between +/-PI. 0 is pointing down +X. */
+	double HeadingAngle() const
+	{
+		// Project Dir into Z plane.
+		FVector PlaneDir = *this;
+		PlaneDir.Z = 0.0;
+		PlaneDir = PlaneDir.GetSafeNormal();
+
+		double Angle = FMath::Acos(PlaneDir.X);
+
+		if (PlaneDir.Y < 0.0)
+		{
+			Angle *= -1.0;
+		}
+
+		return Angle;
+	}
+
+	/** Converts a Cartesian unit vector into spherical coordinates on the unit sphere. @return Output Theta will be in the range [0, PI], and output Phi will be in the range [-PI, PI]. */
+	struct FVector2D UnitCartesianToSpherical() const;
+
+	/* --- Statics ------------------------------------------------------------ */
+
+	static FVector SlerpVectorToDirection(const FVector& V, const FVector& Direction, double Alpha);
+	static FVector SlerpNormals(const FVector& NormalA, const FVector& NormalB, double Alpha);
+
+	static void CreateOrthonormalBasis(FVector& XAxis, FVector& YAxis, FVector& ZAxis)
+	{
+		// Project the X and Y axes onto the plane perpendicular to the Z axis.
+		XAxis -= ZAxis * ((XAxis | ZAxis) / (ZAxis | ZAxis));
+		YAxis -= ZAxis * ((YAxis | ZAxis) / (ZAxis | ZAxis));
+
+		// If the X axis was parallel to the Z axis, choose a vector which is orthogonal to the Y and Z axes.
+		if (XAxis.SizeSquared() < UE_DOUBLE_DELTA * UE_DOUBLE_DELTA)
+		{
+			XAxis = YAxis ^ ZAxis;
+		}
+
+		// If the Y axis was parallel to the Z axis, choose a vector which is orthogonal to the X and Z axes.
+		if (YAxis.SizeSquared() < UE_DOUBLE_DELTA * UE_DOUBLE_DELTA)
+		{
+			YAxis = XAxis ^ ZAxis;
+		}
+
+		// Normalize the basis vectors.
+		XAxis.Normalize();
+		YAxis.Normalize();
+		ZAxis.Normalize();
+	}
+
+	static bool PointsAreSame(const FVector& P, const FVector& Q)
+	{
+		double Temp;
+		Temp = P.X - Q.X;
+		if ((Temp > -UE_THRESH_POINTS_ARE_SAME) && (Temp < UE_THRESH_POINTS_ARE_SAME))
+		{
+			Temp = P.Y - Q.Y;
+			if ((Temp > -UE_THRESH_POINTS_ARE_SAME) && (Temp < UE_THRESH_POINTS_ARE_SAME))
+			{
+				Temp = P.Z - Q.Z;
+				if ((Temp > -UE_THRESH_POINTS_ARE_SAME) && (Temp < UE_THRESH_POINTS_ARE_SAME))
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	static bool PointsAreNear(const FVector& Point1, const FVector& Point2, double Dist)
+	{
+		double Temp;
+		Temp = (Point1.X - Point2.X); if (FMath::Abs(Temp) >= Dist) return false;
+		Temp = (Point1.Y - Point2.Y); if (FMath::Abs(Temp) >= Dist) return false;
+		Temp = (Point1.Z - Point2.Z); if (FMath::Abs(Temp) >= Dist) return false;
+		return true;
+	}
+
+	static double PointPlaneDist(const FVector& Point, const FVector& PlaneBase, const FVector& PlaneNormal)
+	{
+		return (Point - PlaneBase) | PlaneNormal;
+	}
+
+	static FVector PointPlaneProject(const FVector& Point, const FVector& PlaneBase, const FVector& PlaneNorm)
+	{
+		//Find the distance of X from the plane
+		//Add the distance back along the normal from the point
+		return Point - PlaneNorm * FVector::PointPlaneDist(Point, PlaneBase, PlaneNorm);
+	}
+
+	static FVector PointPlaneProject(const FVector& Point, const struct FPlane& Plane);
+	static FVector PointPlaneProject(const FVector& Point, const FVector& A, const FVector& B, const FVector& C);
+
+	static FVector VectorPlaneProject(const FVector& V, const FVector& PlaneNormal)
+	{
+		return V - V.ProjectOnToNormal(PlaneNormal);
+	}
+
+	static double Dist(const FVector& V1, const FVector& V2) { return FMath::Sqrt(FVector::DistSquared(V1, V2)); }
+	static double Distance(const FVector& V1, const FVector& V2) { return Dist(V1, V2); }
+	static double DistXY(const FVector& V1, const FVector& V2) { return FMath::Sqrt(FVector::DistSquaredXY(V1, V2)); }
+	static double Dist2D(const FVector& V1, const FVector& V2) { return DistXY(V1, V2); }
+
+	static double DistSquared(const FVector& V1, const FVector& V2)
+	{
+		return FMath::Square(V2.X - V1.X) + FMath::Square(V2.Y - V1.Y) + FMath::Square(V2.Z - V1.Z);
+	}
+	static double DistSquaredXY(const FVector& V1, const FVector& V2)
+	{
+		return FMath::Square(V2.X - V1.X) + FMath::Square(V2.Y - V1.Y);
+	}
+	static double DistSquared2D(const FVector& V1, const FVector& V2) { return DistSquaredXY(V1, V2); }
+
+	static double BoxPushOut(const FVector& Normal, const FVector& Size)
+	{
+		return FMath::Abs(Normal.X * Size.X) + FMath::Abs(Normal.Y * Size.Y) + FMath::Abs(Normal.Z * Size.Z);
+	}
+
+	static FVector Min(const FVector& A, const FVector& B)
+	{
+		return FVector(FMath::Min(A.X, B.X), FMath::Min(A.Y, B.Y), FMath::Min(A.Z, B.Z));
+	}
+	static FVector Max(const FVector& A, const FVector& B)
+	{
+		return FVector(FMath::Max(A.X, B.X), FMath::Max(A.Y, B.Y), FMath::Max(A.Z, B.Z));
+	}
+	static FVector Min3(const FVector& A, const FVector& B, const FVector& C)
+	{
+		return FVector(FMath::Min3(A.X, B.X, C.X), FMath::Min3(A.Y, B.Y, C.Y), FMath::Min3(A.Z, B.Z, C.Z));
+	}
+	static FVector Max3(const FVector& A, const FVector& B, const FVector& C)
+	{
+		return FVector(FMath::Max3(A.X, B.X, C.X), FMath::Max3(A.Y, B.Y, C.Y), FMath::Max3(A.Z, B.Z, C.Z));
+	}
+
+	static bool Parallel(const FVector& Normal1, const FVector& Normal2, double ParallelCosineThreshold = UE_THRESH_NORMALS_ARE_PARALLEL)
+	{
+		const double NormalDot = Normal1 | Normal2;
+		return FMath::Abs(NormalDot) >= ParallelCosineThreshold;
+	}
+	static bool Coincident(const FVector& Normal1, const FVector& Normal2, double ParallelCosineThreshold = UE_THRESH_NORMALS_ARE_PARALLEL)
+	{
+		const double NormalDot = Normal1 | Normal2;
+		return NormalDot >= ParallelCosineThreshold;
+	}
+	static bool Orthogonal(const FVector& Normal1, const FVector& Normal2, double OrthogonalCosineThreshold = UE_THRESH_NORMALS_ARE_ORTHOGONAL)
+	{
+		const double NormalDot = Normal1 | Normal2;
+		return FMath::Abs(NormalDot) <= OrthogonalCosineThreshold;
+	}
+	static bool Coplanar(const FVector& Base1, const FVector& Normal1, const FVector& Base2, const FVector& Normal2, double ParallelCosineThreshold = UE_THRESH_NORMALS_ARE_PARALLEL)
+	{
+		if      (!FVector::Parallel(Normal1, Normal2, ParallelCosineThreshold)) return false;
+		else if (FMath::Abs(FVector::PointPlaneDist(Base2, Base1, Normal1)) > UE_THRESH_POINT_ON_PLANE) return false;
+		else return true;
+	}
+
+	static double Triple(const FVector& InX, const FVector& InY, const FVector& InZ)
+	{
+		return
+		(	(InX.X * (InY.Y * InZ.Z - InY.Z * InZ.Y))
+		+	(InX.Y * (InY.Z * InZ.X - InY.X * InZ.Z))
+		+	(InX.Z * (InY.X * InZ.Y - InY.Y * InZ.X)));
+	}
+
+	static double EvaluateBezier(const FVector* ControlPoints, int32 NumPoints, TArray<FVector>& OutPoints);
+	static void GenerateClusterCenters(TArray<FVector>& Clusters, const TArray<FVector>& Points, int32 NumIterations, int32 NumConnectionsToBeValid);
+
+	static FVector RadiansToDegrees(const FVector& RadVector) { return RadVector * (180.0 / UE_DOUBLE_PI); }
+	static FVector DegreesToRadians(const FVector& DegVector) { return DegVector * (UE_DOUBLE_PI / 180.0); }
 };
 DUMPER7_ASSERTS_FVector;
+
+inline const FVector FVector::ZeroVector    (0.0,  0.0,  0.0);
+inline const FVector FVector::OneVector     (1.0,  1.0,  1.0);
+inline const FVector FVector::UpVector      (0.0,  0.0,  1.0);
+inline const FVector FVector::DownVector    (0.0,  0.0, -1.0);
+inline const FVector FVector::ForwardVector (1.0,  0.0,  0.0);
+inline const FVector FVector::BackwardVector(-1.0, 0.0,  0.0);
+inline const FVector FVector::RightVector   (0.0,  1.0,  0.0);
+inline const FVector FVector::LeftVector    (0.0, -1.0,  0.0);
+inline const FVector FVector::XAxisVector   (1.0,  0.0,  0.0);
+inline const FVector FVector::YAxisVector   (0.0,  1.0,  0.0);
+inline const FVector FVector::ZAxisVector   (0.0,  0.0,  1.0);
+
+/** Multiplies a vector by a scaling factor. */
+inline FVector operator*(double Scale, const FVector& V)
+{
+	return V.operator*(Scale);
+}
+
+/** Component-wise clamp for FVector */
+inline FVector ClampVector(const FVector& V, const FVector& Min, const FVector& Max)
+{
+	return FVector(
+		FMath::Clamp(V.X, Min.X, Max.X),
+		FMath::Clamp(V.Y, Min.Y, Max.Y),
+		FMath::Clamp(V.Z, Min.Z, Max.Z)
+	);
+}
 
 // ScriptStruct CoreUObject.OrientedBox
 // 0x0078 (0x0078 - 0x0000)
@@ -607,13 +1247,122 @@ DUMPER7_ASSERTS_FAssetBundleData;
 
 // ScriptStruct CoreUObject.Guid
 // 0x0010 (0x0010 - 0x0000)
-struct FGuid final
+struct FGuid
 {
 public:
-	int32                                         A;                                                 // 0x0000(0x0004)(Edit, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-	int32                                         B;                                                 // 0x0004(0x0004)(Edit, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-	int32                                         C;                                                 // 0x0008(0x0004)(Edit, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
-	int32                                         D;                                                 // 0x000C(0x0004)(Edit, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
+	FGuid()
+		: A(0), B(0), C(0), D(0)
+	{
+	}
+
+	explicit FGuid(uint32 InA, uint32 InB, uint32 InC, uint32 InD)
+		: A(InA), B(InB), C(InC), D(InD)
+	{
+	}
+
+	explicit FGuid(const FString& InGuidStr)
+	{
+		if (!Parse(InGuidStr, *this))
+			Invalidate();
+	}
+
+public:
+	friend bool operator==(const FGuid& X, const FGuid& Y)
+	{
+		return ((X.A ^ Y.A) | (X.B ^ Y.B) | (X.C ^ Y.C) | (X.D ^ Y.D)) == 0;
+	}
+
+	friend bool operator!=(const FGuid& X, const FGuid& Y)
+	{
+		return ((X.A ^ Y.A) | (X.B ^ Y.B) | (X.C ^ Y.C) | (X.D ^ Y.D)) != 0;
+	}
+
+	friend bool operator<(const FGuid& X, const FGuid& Y)
+	{
+		return	((X.A < Y.A) ? true : ((X.A > Y.A) ? false :
+			((X.B < Y.B) ? true : ((X.B > Y.B) ? false :
+				((X.C < Y.C) ? true : ((X.C > Y.C) ? false :
+					((X.D < Y.D) ? true : ((X.D > Y.D) ? false : false))))))));
+	}
+
+	uint32& operator[](int32 Index)
+	{
+		switch (Index)
+		{
+		case 0: return A;
+		case 1: return B;
+		case 2: return C;
+		case 3: return D;
+		}
+		return A;
+	}
+
+	const uint32& operator[](int32 Index) const
+	{
+		switch (Index)
+		{
+		case 0: return A;
+		case 1: return B;
+		case 2: return C;
+		case 3: return D;
+		}
+		return A;
+	}
+
+public:
+	void Invalidate()
+	{
+		A = B = C = D = 0;
+	}
+
+	bool IsValid() const
+	{
+		return ((A | B | C | D) != 0);
+	}
+
+public:
+	friend uint32 GetTypeHash(const FGuid& Guid)
+	{
+		return Guid.A ^ Guid.B ^ Guid.C ^ Guid.D;
+	}
+
+public:
+	static FGuid NewGuid()
+	{
+		static std::atomic<uint64> Counter{ 0 };
+		const uint64 Unique = ++Counter;
+		const uint64 Ticks = GetTickCount64();
+		const uint64 Stamp = __rdtsc();
+
+		return FGuid(
+			static_cast<uint32>(Ticks),
+			static_cast<uint32>(Stamp),
+			static_cast<uint32>(Stamp >> 32) ^ static_cast<uint32>(Unique),
+			static_cast<uint32>(Unique >> 32) ^ static_cast<uint32>(Ticks >> 32) ^ static_cast<uint32>(reinterpret_cast<uintptr_t>(&Counter)));
+	}
+
+	static bool Parse(const FString& GuidString, FGuid& OutGuid)
+	{
+		std::wstring Hex;
+		for (TCHAR Char : GuidString.ToWString())
+			if (std::iswxdigit(Char))
+				Hex.push_back(Char);
+
+		if (Hex.size() != 32)
+			return false;
+
+		OutGuid.A = static_cast<uint32>(std::wcstoul(Hex.substr(0, 8).c_str(), nullptr, 16));
+		OutGuid.B = static_cast<uint32>(std::wcstoul(Hex.substr(8, 8).c_str(), nullptr, 16));
+		OutGuid.C = static_cast<uint32>(std::wcstoul(Hex.substr(16, 8).c_str(), nullptr, 16));
+		OutGuid.D = static_cast<uint32>(std::wcstoul(Hex.substr(24, 8).c_str(), nullptr, 16));
+		return true;
+	}
+
+public:
+	uint32 A;
+	uint32 B;
+	uint32 C;
+	uint32 D;
 };
 DUMPER7_ASSERTS_FGuid;
 
@@ -635,12 +1384,557 @@ DUMPER7_ASSERTS_FAutomationEvent;
 struct alignas(0x10) FQuat final
 {
 public:
+	using FReal = double;
+
 	double                                        X;                                                 // 0x0000(0x0008)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
 	double                                        Y;                                                 // 0x0008(0x0008)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
 	double                                        Z;                                                 // 0x0010(0x0008)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
 	double                                        W;                                                 // 0x0018(0x0008)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
+
+public:
+	/** Identity quaternion. */
+	static const FQuat Identity;
+
+public:
+	/*
+	* Deviation from UE: UE's default constructor leaves the components
+	* uninitialized. This one produces the identity quaternion so that generated
+	* structs holding an FQuat by value start out with a valid rotation.
+	*/
+	constexpr FQuat()
+		: X(0.0), Y(0.0), Z(0.0), W(1.0)
+	{
+	}
+	constexpr FQuat(const FQuat& Other)
+		: X(Other.X), Y(Other.Y), Z(Other.Z), W(Other.W)
+	{
+	}
+	constexpr FQuat(double InX, double InY, double InZ, double InW)
+		: X(InX), Y(InY), Z(InZ), W(InW)
+	{
+	}
+	/** Initializes all elements to V. */
+	explicit constexpr FQuat(double V)
+		: X(V), Y(V), Z(V), W(V)
+	{
+	}
+	/** W is 0 for ForceInitToZero, otherwise 1 (creating an identity transform). */
+	explicit constexpr FQuat(EForceInit ZeroOrNot)
+		: X(0), Y(0), Z(0), W(ZeroOrNot == ForceInitToZero ? 0.0 : 1.0)
+	{
+	}
+	/** @param Axis assumed to be a normalized vector, @param AngleRad angle to rotate about the given axis (in radians) */
+	FQuat(FVector Axis, double AngleRad)
+	{
+		const double half_a = 0.5 * AngleRad;
+		double s, c;
+		FMath::SinCos(&s, &c, half_a);
+
+		X = s * Axis.X;
+		Y = s * Axis.Y;
+		Z = s * Axis.Z;
+		W = c;
+	}
+	explicit FQuat(const struct FRotator& R);
+	explicit FQuat(const struct FMatrix& M);
+
+	static FQuat MakeFromRotator(const struct FRotator& R);
+
+	FQuat& operator=(const FQuat& Other)
+	{
+		X = Other.X;
+		Y = Other.Y;
+		Z = Other.Z;
+		W = Other.W;
+
+		return *this;
+	}
+
+	/* --- Arithmetic ---------------------------------------------------------
+	 *
+	 * Addition and subtraction are component-wise; composing rotations is what
+	 * operator*(FQuat) is for.
+	 */
+
+	FQuat operator+(const FQuat& Q) const { return FQuat(X + Q.X, Y + Q.Y, Z + Q.Z, W + Q.W); }
+	FQuat operator-(const FQuat& Q) const { return FQuat(X - Q.X, Y - Q.Y, Z - Q.Z, W - Q.W); }
+	/** Negates the quaternion. Note that this represents the same rotation. */
+	FQuat operator-() const { return FQuat(-X, -Y, -Z, -W); }
+
+	FQuat operator+=(const FQuat& Q) { X += Q.X; Y += Q.Y; Z += Q.Z; W += Q.W; return *this; }
+	FQuat operator-=(const FQuat& Q) { X -= Q.X; Y -= Q.Y; Z -= Q.Z; W -= Q.W; return *this; }
+
+	/*
+	* Gets the result of multiplying this by another quaternion (this * Q).
+	*
+	* Order matters when composing quaternions: C = A * B will yield a quaternion C that logically
+	* first applies B then A to any subsequent transformation (right first, then left).
+	*
+	* Body is VectorQuaternionMultiply()'s USE_FAST_QUAT_MUL==0 path from UnrealMathFPU.h.
+	*/
+	FQuat operator*(const FQuat& Q) const
+	{
+		// store intermediate results in temporaries
+		const double TX = W * Q.X + X * Q.W + Y * Q.Z - Z * Q.Y;
+		const double TY = W * Q.Y - X * Q.Z + Y * Q.W + Z * Q.X;
+		const double TZ = W * Q.Z + X * Q.Y - Y * Q.X + Z * Q.W;
+		const double TW = W * Q.W - X * Q.X - Y * Q.Y - Z * Q.Z;
+
+		return FQuat(TX, TY, TZ, TW);
+	}
+	FQuat operator*=(const FQuat& Q)
+	{
+		*this = *this * Q;
+		return *this;
+	}
+
+	/** Rotate a vector by this quaternion. */
+	FVector operator*(const FVector& V) const { return RotateVector(V); }
+
+	/*
+	* Multiply this by a matrix.
+	* This matrix conversion came from
+	* http://www.m-hikari.com/ija/ija-password-2008/ija-password17-20-2008/aristidouIJA17-20-2008.pdf
+	* used for non-uniform scaling transform.
+	*/
+	struct FMatrix operator*(const struct FMatrix& M) const;
+
+	FQuat operator*(const double Scale) const { return FQuat(Scale * X, Scale * Y, Scale * Z, Scale * W); }
+	FQuat operator*=(const double Scale) { X *= Scale; Y *= Scale; Z *= Scale; W *= Scale; return *this; }
+
+	FQuat operator/(const double Scale) const
+	{
+		const double Recip = 1.0 / Scale;
+		return FQuat(X * Recip, Y * Recip, Z * Recip, W * Recip);
+	}
+	FQuat operator/=(const double Scale)
+	{
+		const double Recip = 1.0 / Scale;
+		X *= Recip; Y *= Recip; Z *= Recip; W *= Recip;
+		return *this;
+	}
+
+	/* --- Comparison ---------------------------------------------------------- */
+
+	bool operator==(const FQuat& Q) const { return X == Q.X && Y == Q.Y && Z == Q.Z && W == Q.W; }
+	bool operator!=(const FQuat& Q) const { return X != Q.X || Y != Q.Y || Z != Q.Z || W != Q.W; }
+	bool Identical(const FQuat* Q, const uint32 PortFlags) const { return X == Q->X && Y == Q->Y && Z == Q->Z && W == Q->W; }
+
+	/** Calculates dot product of two quaternions. */
+	double operator|(const FQuat& Q) const { return X * Q.X + Y * Q.Y + Z * Q.Z + W * Q.W; }
+
+	/** Checks whether another Quaternion is equal to this, within specified tolerance. Flipped axes of rotation compare equal. */
+	bool Equals(const FQuat& Q, double Tolerance = UE_DOUBLE_KINDA_SMALL_NUMBER) const
+	{
+		return (FMath::Abs(X - Q.X) <= Tolerance && FMath::Abs(Y - Q.Y) <= Tolerance && FMath::Abs(Z - Q.Z) <= Tolerance && FMath::Abs(W - Q.W) <= Tolerance)
+			|| (FMath::Abs(X + Q.X) <= Tolerance && FMath::Abs(Y + Q.Y) <= Tolerance && FMath::Abs(Z + Q.Z) <= Tolerance && FMath::Abs(W + Q.W) <= Tolerance);
+	}
+	bool IsIdentity(double Tolerance = UE_DOUBLE_SMALL_NUMBER) const { return Equals(FQuat::Identity, Tolerance); }
+
+	/* --- Length and normalization -------------------------------------------- */
+
+	double Size() const { return FMath::Sqrt(X * X + Y * Y + Z * Z + W * W); }
+	double SizeSquared() const { return (X * X + Y * Y + Z * Z + W * W); }
+
+	/** Normalize this quaternion if it is large enough, otherwise become the identity. */
+	void Normalize(double Tolerance = UE_DOUBLE_SMALL_NUMBER)
+	{
+		const double SquareSum = X * X + Y * Y + Z * Z + W * W;
+
+		if (SquareSum >= Tolerance)
+		{
+			const double Scale = FMath::InvSqrt(SquareSum);
+
+			X *= Scale;
+			Y *= Scale;
+			Z *= Scale;
+			W *= Scale;
+		}
+		else
+		{
+			*this = FQuat::Identity;
+		}
+	}
+	FQuat GetNormalized(double Tolerance = UE_DOUBLE_SMALL_NUMBER) const
+	{
+		FQuat Result(*this);
+		Result.Normalize(Tolerance);
+		return Result;
+	}
+	bool IsNormalized() const { return (FMath::Abs(1.0 - SizeSquared()) < UE_THRESH_QUAT_NORMALIZED); }
+
+	/* --- Axis and angle ------------------------------------------------------ */
+
+	/** @warning The rotation returned may not be the shortest version; consider GetShortestArcWith(FQuat::Identity) first. */
+	double GetAngle() const { return 2.0 * FMath::Acos(W); }
+
+	void ToAxisAndAngle(FVector& Axis, float& Angle) const
+	{
+		Angle = (float)GetAngle();
+		Axis = GetRotationAxis();
+	}
+	void ToAxisAndAngle(FVector& Axis, double& Angle) const
+	{
+		Angle = (double)GetAngle();
+		Axis = GetRotationAxis();
+	}
+
+	/*
+	* Get the axis of rotation of the Quaternion.
+	* For the identity Quaternion which has no such rotation, FVector(1,0,0) is returned.
+	*/
+	FVector GetRotationAxis() const
+	{
+		const double SquareSum = X * X + Y * Y + Z * Z;
+		if (SquareSum < UE_DOUBLE_SMALL_NUMBER)
+		{
+			return FVector::XAxisVector;
+		}
+		const double Scale = FMath::InvSqrt(SquareSum);
+		return FVector(X * Scale, Y * Scale, Z * Scale);
+	}
+
+	/** Find the angular distance between two rotation quaternions (in radians). */
+	double AngularDistance(const FQuat& Q) const
+	{
+		double InnerProd = X * Q.X + Y * Q.Y + Z * Q.Z + W * Q.W;
+		return FMath::Acos((2 * InnerProd * InnerProd) - 1.0);
+	}
+
+	/** The direction of the vector is the rotation axis, the magnitude the angle in radians. @warning Requires this quaternion to be normalized. */
+	FVector ToRotationVector() const
+	{
+		FQuat RotQ = Log();
+		return FVector(RotQ.X * 2.0, RotQ.Y * 2.0, RotQ.Z * 2.0);
+	}
+	static FQuat MakeFromRotationVector(const FVector& RotationVector)
+	{
+		FQuat RotQ(RotationVector.X * 0.5, RotationVector.Y * 0.5, RotationVector.Z * 0.5, 0.0);
+		return RotQ.Exp();
+	}
+
+	/* --- Rotation ------------------------------------------------------------ */
+
+	FVector RotateVector(FVector V) const
+	{
+		// http://people.csail.mit.edu/bkph/articles/Quaternions.pdf
+		// V' = V + 2w(Q x V) + (2Q x (Q x V))
+		// refactor:
+		// V' = V + w(2(Q x V)) + (Q x (2(Q x V)))
+		// T = 2(Q x V);
+		// V' = V + w*(T) + (Q x T)
+
+		const FVector Q(X, Y, Z);
+		const FVector TT = FVector::CrossProduct(Q, V) * 2.0;
+		const FVector Result = V + (TT * W) + FVector::CrossProduct(Q, TT);
+		return Result;
+	}
+
+	FVector UnrotateVector(FVector V) const
+	{
+		const FVector Q(-X, -Y, -Z); // Inverse
+		const FVector TT = FVector::CrossProduct(Q, V) * 2.0;
+		const FVector Result = V + (TT * W) + FVector::CrossProduct(Q, TT);
+		return Result;
+	}
+
+	/** @return inverse of this quaternion. @warning Requires this quaternion to be normalized. */
+	FQuat Inverse() const { return FQuat(-X, -Y, -Z, W); }
+
+	/** @return quaternion with W=0 and V=theta*v. */
+	FQuat Log() const
+	{
+		FQuat Result;
+		Result.W = 0.0;
+
+		if (FMath::Abs(W) < 1.0)
+		{
+			const double Angle = FMath::Acos(W);
+			const double SinAngle = FMath::Sin(Angle);
+
+			if (FMath::Abs(SinAngle) >= UE_DOUBLE_SMALL_NUMBER)
+			{
+				const double Scale = Angle / SinAngle;
+				Result.X = Scale * X;
+				Result.Y = Scale * Y;
+				Result.Z = Scale * Z;
+
+				return Result;
+			}
+		}
+
+		Result.X = X;
+		Result.Y = Y;
+		Result.Z = Z;
+
+		return Result;
+	}
+
+	/*
+	* @note Exp should really only be used after Log.
+	* Assumes a quaternion with W=0 and V=theta*v (where |v| = 1).
+	* Exp(q) = (sin(theta)*v, cos(theta))
+	*/
+	FQuat Exp() const
+	{
+		const double Angle = FMath::Sqrt(X * X + Y * Y + Z * Z);
+		const double SinAngle = FMath::Sin(Angle);
+
+		FQuat Result;
+		Result.W = FMath::Cos(Angle);
+
+		if (FMath::Abs(SinAngle) >= UE_DOUBLE_SMALL_NUMBER)
+		{
+			const double Scale = SinAngle / Angle;
+			Result.X = Scale * X;
+			Result.Y = Scale * Y;
+			Result.Z = Scale * Z;
+		}
+		else
+		{
+			Result.X = X;
+			Result.Y = Y;
+			Result.Z = Z;
+		}
+
+		return Result;
+	}
+
+	/** Enforce that the delta between this Quaternion and another one represents the shortest possible rotation angle. */
+	void EnforceShortestArcWith(const FQuat& OtherQuat)
+	{
+		const double DotResult = (OtherQuat | *this);
+		const double Bias = FMath::FloatSelect(DotResult, 1.0, -1.0);
+
+		X *= Bias;
+		Y *= Bias;
+		Z *= Bias;
+		W *= Bias;
+	}
+	FQuat GetShortestArcWith(const FQuat& OtherQuat) const
+	{
+		FQuat Result(*this);
+		Result.EnforceShortestArcWith(OtherQuat);
+		return Result;
+	}
+
+	/* --- Basis vectors -------------------------------------------------------- */
+
+	FVector GetAxisX() const { return RotateVector(FVector(1.0, 0.0, 0.0)); }
+	FVector GetAxisY() const { return RotateVector(FVector(0.0, 1.0, 0.0)); }
+	FVector GetAxisZ() const { return RotateVector(FVector(0.0, 0.0, 1.0)); }
+
+	FVector GetForwardVector() const { return GetAxisX(); }
+	FVector GetRightVector() const { return GetAxisY(); }
+	FVector GetUpVector() const { return GetAxisZ(); }
+
+	/** Convert a rotation into a unit vector facing in its direction. Equivalent to GetForwardVector(). */
+	FVector Vector() const { return GetAxisX(); }
+
+	/* --- Conversions ---------------------------------------------------------- */
+
+	/** Get the FRotator representation of this Quaternion. */
+	struct FRotator Rotator() const;
+	/** Convert a Quaternion into floating-point Euler angles (in degrees). */
+	FVector Euler() const;
+	/** Convert a vector of floating-point Euler angles (in degrees) into a Quaternion. */
+	static FQuat MakeFromEuler(const FVector& Euler);
+
+	/** Get the FMatrix representation of this Quaternion. */
+	struct FMatrix ToMatrix() const;
+	/** Get the FMatrix representation of this Quaternion and store it in Mat. */
+	void ToMatrix(struct FMatrix& Mat) const;
+
+	/* --- Swing / twist -------------------------------------------------------- */
+
+	/** @warning assumes normalized quaternion and twist axis */
+	void ToSwingTwist(const FVector& InTwistAxis, FQuat& OutSwing, FQuat& OutTwist) const
+	{
+		// Vector part projected onto twist axis
+		FVector Projection = InTwistAxis * FVector::DotProduct(InTwistAxis, FVector(X, Y, Z));
+
+		// Twist quaternion
+		OutTwist = FQuat(Projection.X, Projection.Y, Projection.Z, W);
+
+		// Singularity close to 180deg
+		if (OutTwist.SizeSquared() == 0.0)
+		{
+			OutTwist = FQuat::Identity;
+		}
+		else
+		{
+			OutTwist.Normalize();
+		}
+
+		// Set swing
+		OutSwing = *this * OutTwist.Inverse();
+	}
+
+	/** @return Twist angle (in radians). @warning assumes normalized quaternion and twist axis */
+	double GetTwistAngle(const FVector& TwistAxis) const
+	{
+		double XYZ = FVector::DotProduct(TwistAxis, FVector(X, Y, Z));
+		return FMath::UnwindRadians(2.0 * FMath::Atan2(XYZ, W));
+	}
+
+	bool ContainsNaN() const
+	{
+		return (!FMath::IsFinite(X) ||
+				!FMath::IsFinite(Y) ||
+				!FMath::IsFinite(Z) ||
+				!FMath::IsFinite(W));
+	}
+
+	FString ToString() const;
+
+	/* --- Statics --------------------------------------------------------------- */
+
+	/** Generates the 'smallest' (geodesic) rotation between two vectors of arbitrary length. */
+	static FQuat FindBetween(const FVector& Vector1, const FVector& Vector2) { return FindBetweenVectors(Vector1, Vector2); }
+	/** Generates the 'smallest' (geodesic) rotation between two normals (assumed to be unit length). */
+	static FQuat FindBetweenNormals(const FVector& Normal1, const FVector& Normal2);
+	/** Generates the 'smallest' (geodesic) rotation between two vectors of arbitrary length. */
+	static FQuat FindBetweenVectors(const FVector& Vector1, const FVector& Vector2);
+
+	/** Error measure (angle) between two quaternions, ranged [0..1]. @note normalized input is expected. */
+	static double Error(const FQuat& Q1, const FQuat& Q2)
+	{
+		const double cosom = FMath::Abs(Q1.X * Q2.X + Q1.Y * Q2.Y + Q1.Z * Q2.Z + Q1.W * Q2.W);
+		return (FMath::Abs(cosom) < 0.9999999) ? FMath::Acos(cosom) * (1.0 / UE_DOUBLE_PI) : 0.0;
+	}
+	static double ErrorAutoNormalize(const FQuat& A, const FQuat& B)
+	{
+		FQuat Q1 = A;
+		Q1.Normalize();
+
+		FQuat Q2 = B;
+		Q2.Normalize();
+
+		return FQuat::Error(Q1, Q2);
+	}
+
+	/** Fast Linear Quaternion Interpolation. Result is NOT normalized. */
+	static FQuat FastLerp(const FQuat& A, const FQuat& B, const double Alpha)
+	{
+		// To ensure the 'shortest route', we make sure the dot product between the both rotations is positive.
+		const double DotResult = (A | B);
+		const double Bias = FMath::FloatSelect(DotResult, 1.0, -1.0);
+		return (B * Alpha) + (A * (Bias * (1.0 - Alpha)));
+	}
+	/** Bi-Linear Quaternion interpolation. Result is NOT normalized. */
+	static FQuat FastBilerp(const FQuat& P00, const FQuat& P10, const FQuat& P01, const FQuat& P11, double FracX, double FracY)
+	{
+		return FQuat::FastLerp(
+			FQuat::FastLerp(P00, P10, FracX),
+			FQuat::FastLerp(P01, P11, FracX),
+			FracY
+		);
+	}
+
+	/** Spherical interpolation. Will correct alignment. Result is NOT normalized. */
+	static FQuat Slerp_NotNormalized(const FQuat& Quat1, const FQuat& Quat2, double Slerp)
+	{
+		// Get cosine of angle between quats.
+		double RawCosom =
+			Quat1.X * Quat2.X +
+			Quat1.Y * Quat2.Y +
+			Quat1.Z * Quat2.Z +
+			Quat1.W * Quat2.W;
+
+		// Unaligned quats - compensate, results in taking shorter route.
+		const double Sign = FMath::FloatSelect(RawCosom, 1.0, -1.0);
+		RawCosom *= Sign;
+
+		double Scale0 = 1.0 - Slerp;
+		double Scale1 = Slerp * Sign;
+
+		if (RawCosom < 0.9999)
+		{
+			const double Omega = FMath::Acos(RawCosom);
+			const double InvSin = 1.0 / FMath::Sin(Omega);
+			Scale0 = FMath::Sin(Scale0 * Omega) * InvSin;
+			Scale1 = FMath::Sin(Scale1 * Omega) * InvSin;
+		}
+
+		return FQuat(
+			Scale0 * Quat1.X + Scale1 * Quat2.X,
+			Scale0 * Quat1.Y + Scale1 * Quat2.Y,
+			Scale0 * Quat1.Z + Scale1 * Quat2.Z,
+			Scale0 * Quat1.W + Scale1 * Quat2.W);
+	}
+	/** Spherical interpolation. Will correct alignment. Result is normalized. */
+	static FQuat Slerp(const FQuat& Quat1, const FQuat& Quat2, double Slerp)
+	{
+		return Slerp_NotNormalized(Quat1, Quat2, Slerp).GetNormalized();
+	}
+
+	/** Simpler Slerp that doesn't do any checks for 'shortest distance' etc. Result is NOT normalized. */
+	static FQuat SlerpFullPath_NotNormalized(const FQuat& quat1, const FQuat& quat2, double Alpha)
+	{
+		const double CosAngle = FMath::Clamp(quat1 | quat2, -1.0, 1.0);
+		const double Angle = FMath::Acos(CosAngle);
+
+		if (FMath::Abs(Angle) < UE_DOUBLE_KINDA_SMALL_NUMBER)
+		{
+			return quat1;
+		}
+
+		const double SinAngle = FMath::Sin(Angle);
+		const double InvSinAngle = 1.0 / SinAngle;
+
+		const double Scale0 = FMath::Sin((1.0 - Alpha) * Angle) * InvSinAngle;
+		const double Scale1 = FMath::Sin(Alpha * Angle) * InvSinAngle;
+
+		return quat1 * Scale0 + quat2 * Scale1;
+	}
+	/** Simpler Slerp that doesn't do any checks for 'shortest distance' etc. Result is normalized. */
+	static FQuat SlerpFullPath(const FQuat& quat1, const FQuat& quat2, double Alpha)
+	{
+		return SlerpFullPath_NotNormalized(quat1, quat2, Alpha).GetNormalized();
+	}
+
+	/** Cubic quaternion interpolation. This will correct alignment by ensuring that the shortest path is taken. */
+	static FQuat Squad(const FQuat& quat1, const FQuat& tang1, const FQuat& quat2, const FQuat& tang2, double Alpha)
+	{
+		// Always slerp along the short path from quat1 to quat2 to prevent axis flipping.
+		// This approach is taken by OGRE engine, amongst others.
+		const FQuat Q1 = FQuat::Slerp_NotNormalized(quat1, quat2, Alpha);
+		const FQuat Q2 = FQuat::SlerpFullPath_NotNormalized(tang1, tang2, Alpha);
+		const FQuat Result = FQuat::SlerpFullPath(Q1, Q2, 2.0 * Alpha * (1.0 - Alpha));
+
+		return Result;
+	}
+	/** Simpler Squad that doesn't do any checks for 'shortest distance' etc. */
+	static FQuat SquadFullPath(const FQuat& quat1, const FQuat& tang1, const FQuat& quat2, const FQuat& tang2, double Alpha)
+	{
+		const FQuat Q1 = FQuat::SlerpFullPath_NotNormalized(quat1, quat2, Alpha);
+		const FQuat Q2 = FQuat::SlerpFullPath_NotNormalized(tang1, tang2, Alpha);
+		const FQuat Result = FQuat::SlerpFullPath(Q1, Q2, 2.0 * Alpha * (1.0 - Alpha));
+
+		return Result;
+	}
+
+	/** Calculate tangents between given points. */
+	static void CalcTangents(const FQuat& PrevP, const FQuat& P, const FQuat& NextP, double Tension, FQuat& OutTan)
+	{
+		const FQuat InvP = P.Inverse();
+		const FQuat Part1 = (InvP * PrevP).Log();
+		const FQuat Part2 = (InvP * NextP).Log();
+
+		const FQuat PreExp = (Part1 + Part2) * -0.5;
+
+		OutTan = P * PreExp.Exp();
+	}
 };
 DUMPER7_ASSERTS_FQuat;
+
+inline const FQuat FQuat::Identity(0.0, 0.0, 0.0, 1.0);
+
+/** Global operator for (scalar * Quat). */
+inline FQuat operator*(const double Scale, const FQuat& Q)
+{
+	return Q.operator*(Scale);
+}
 
 // ScriptStruct CoreUObject.InterpCurvePointQuat
 // 0x0080 (0x0080 - 0x0000)
@@ -1653,150 +2947,406 @@ DUMPER7_ASSERTS_FRay3f;
 struct FRotator final
 {
 public:
+	/* Kept as a compatibility alias for the previous SDK rotator; UE spells this FReal. */
 	using UnderlayingType = double;
+	using FReal = double;
 
+	/** Rotation around the right axis (around Y axis), Looking up and down (0=Straight Ahead, +Up, -Down) */
 	double                                        Pitch;                                             // 0x0000(0x0008)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
+	/** Rotation around the up axis (around Z axis), Turning around (0=Forward, +Right, -Left) */
 	double                                        Yaw;                                               // 0x0008(0x0008)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
+	/** Rotation around the forward axis (around X axis), Tilting your head, (0=Straight, +Clockwise, -CCW) */
 	double                                        Roll;                                              // 0x0010(0x0008)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
 
 public:
-	static UnderlayingType ClampAxis(UnderlayingType Angle)
+	/** A rotator of zero degrees on each axis. */
+	static const FRotator ZeroRotator;
+
+public:
+	/*
+	* Deviation from UE: UE's default constructor leaves the components
+	* uninitialized. Zeroing is kept from the previous SDK rotator so that the
+	* generated structs holding an FRotator by value keep behaving the way the
+	* rest of this SDK already assumes.
+	*/
+	constexpr FRotator()
+		: Pitch(0.0), Yaw(0.0), Roll(0.0)
 	{
-		Angle = std::fmod(Angle, static_cast<UnderlayingType>(360));
-		if (Angle < static_cast<UnderlayingType>(0))
-			Angle += static_cast<UnderlayingType>(360);
-	
-		return Angle;
 	}
-	static UnderlayingType NormalizeAxis(UnderlayingType Angle)
+	constexpr FRotator(const FRotator& Other)
+		: Pitch(Other.Pitch), Yaw(Other.Yaw), Roll(Other.Roll)
 	{
-		Angle = ClampAxis(Angle);
-		if (Angle > static_cast<UnderlayingType>(180))
-			Angle -= static_cast<UnderlayingType>(360);
-	
-		return Angle;
+	}
+	/** Sets all three axes to InF, as UE does; note this is explicit, so FRotator(5.0) is (5,5,5) and not the old SDK's (5,0,0). */
+	explicit constexpr FRotator(double InF)
+		: Pitch(InF), Yaw(InF), Roll(InF)
+	{
+	}
+	constexpr FRotator(double InPitch, double InYaw, double InRoll)
+		: Pitch(InPitch), Yaw(InYaw), Roll(InRoll)
+	{
+	}
+	explicit constexpr FRotator(EForceInit)
+		: Pitch(0), Yaw(0), Roll(0)
+	{
+	}
+	explicit FRotator(const FQuat& Quat)
+	{
+		*this = Quat.Rotator();
 	}
 
-	FRotator& Clamp()
+	FRotator& operator=(const FRotator& Other)
 	{
-		Pitch = ClampAxis(Pitch);
-		Yaw = ClampAxis(Yaw);
-		Roll = ClampAxis(Roll);
-	
+		Pitch = Other.Pitch;
+		Yaw = Other.Yaw;
+		Roll = Other.Roll;
+
 		return *this;
 	}
-	constexpr FRotator(UnderlayingType Pitch = 0, UnderlayingType Yaw = 0, UnderlayingType Roll = 0)
-		: Pitch(Pitch), Yaw(Yaw), Roll(Roll)
+
+	/* --- Arithmetic -----------------------------------------------------------
+	 *
+	 * Note that UE has no component-wise FRotator*FRotator or FRotator/FRotator;
+	 * multiplication is by a scalar only. Compose rotations via Quaternion().
+	 */
+
+	FRotator operator+(const FRotator& R) const { return FRotator(Pitch + R.Pitch, Yaw + R.Yaw, Roll + R.Roll); }
+	FRotator operator-(const FRotator& R) const { return FRotator(Pitch - R.Pitch, Yaw - R.Yaw, Roll - R.Roll); }
+	FRotator operator*(double Scale) const { return FRotator(Pitch * Scale, Yaw * Scale, Roll * Scale); }
+
+	FRotator operator*=(double Scale) { Pitch = Pitch * Scale; Yaw = Yaw * Scale; Roll = Roll * Scale; return *this; }
+	FRotator operator+=(const FRotator& R) { Pitch += R.Pitch; Yaw += R.Yaw; Roll += R.Roll; return *this; }
+	FRotator operator-=(const FRotator& R) { Pitch -= R.Pitch; Yaw -= R.Yaw; Roll -= R.Roll; return *this; }
+
+	/* --- Comparison ------------------------------------------------------------ */
+
+	/** Checks each component for exact equality. */
+	bool operator==(const FRotator& R) const { return Pitch == R.Pitch && Yaw == R.Yaw && Roll == R.Roll; }
+	bool operator!=(const FRotator& V) const { return Pitch != V.Pitch || Yaw != V.Yaw || Roll != V.Roll; }
+
+	/** Checks whether rotator is nearly zero within specified tolerance, when treated as an orientation, so (0, 0, 360) is "zero". */
+	bool IsNearlyZero(double Tolerance = UE_DOUBLE_KINDA_SMALL_NUMBER) const
 	{
+		return
+			FMath::Abs(NormalizeAxis(Pitch)) <= Tolerance
+			&& FMath::Abs(NormalizeAxis(Yaw)) <= Tolerance
+			&& FMath::Abs(NormalizeAxis(Roll)) <= Tolerance;
 	}
-	constexpr FRotator(const FRotator& other)
-		: Pitch(other.Pitch), Yaw(other.Yaw), Roll(other.Roll)
+	/** Checks whether this has exactly zero rotation, when treated as an orientation, so (0, 0, 360) is "zero". */
+	bool IsZero() const { return (ClampAxis(Pitch) == 0.0) && (ClampAxis(Yaw) == 0.0) && (ClampAxis(Roll) == 0.0); }
+
+	/*
+	* Checks whether two rotators are equal within specified tolerance, when treated as an orientation.
+	* It can compare only wound rotators (i.e. multiples of 360 degrees) that end up in a same rotation, so
+	* FRotator(0, 45, 0).Equals(FRotator(180, 135, 180)) is false. See EqualsOrientation for that.
+	*/
+	bool Equals(const FRotator& R, double Tolerance = UE_DOUBLE_KINDA_SMALL_NUMBER) const
 	{
+		return (FMath::Abs(NormalizeAxis(Pitch - R.Pitch)) <= Tolerance)
+			&& (FMath::Abs(NormalizeAxis(Yaw - R.Yaw)) <= Tolerance)
+			&& (FMath::Abs(NormalizeAxis(Roll - R.Roll)) <= Tolerance);
 	}
-	FRotator& Normalize()
+
+	/** Checks whether two rotators have the same orientation, without requiring similar angles or wound multiples of 360. */
+	bool EqualsOrientation(const FRotator& R, double Tolerance = UE_DOUBLE_KINDA_SMALL_NUMBER) const
+	{
+		return Quaternion().AngularDistance(R.Quaternion()) <= Tolerance;
+	}
+
+	/* --- Modification ---------------------------------------------------------- */
+
+	/** Adds to each component of the rotator. @return Copy of rotator after addition. */
+	FRotator Add(double DeltaPitch, double DeltaYaw, double DeltaRoll)
+	{
+		Yaw   += DeltaYaw;
+		Pitch += DeltaPitch;
+		Roll  += DeltaRoll;
+		return *this;
+	}
+
+	/** Returns the inverse of the rotator. */
+	FRotator GetInverse() const { return Quaternion().Inverse().Rotator(); }
+
+	/** Get the rotation, snapped to specified degree segments. */
+	FRotator GridSnap(const FRotator& RotGrid) const
+	{
+		return FRotator
+			(
+			FMath::GridSnap(Pitch, RotGrid.Pitch),
+			FMath::GridSnap(Yaw,   RotGrid.Yaw),
+			FMath::GridSnap(Roll,  RotGrid.Roll)
+			);
+	}
+
+	/** Gets the rotation values so they fall within the range [0,360]. */
+	FRotator Clamp() const { return FRotator(ClampAxis(Pitch), ClampAxis(Yaw), ClampAxis(Roll)); }
+
+	/** In-place normalize, removes all winding and creates the "shortest route" rotation. */
+	void Normalize()
 	{
 		Pitch = NormalizeAxis(Pitch);
 		Yaw = NormalizeAxis(Yaw);
 		Roll = NormalizeAxis(Roll);
-	
-		return *this;
-	}
-	FRotator& operator*=(UnderlayingType Scalar)
-	{
-		*this = *this * Scalar;
-	
-		return *this;
-	}
-	FRotator& operator*=(const FRotator& Other)
-	{
-		*this = *this * Other;
-	
-		return *this;
-	}
-	FRotator& operator+=(const FRotator& Other)
-	{
-		*this = *this + Other;
-	
-		return *this;
-	}
-	FRotator& operator-=(const FRotator& Other)
-	{
-		*this = *this - Other;
-	
-		return *this;
-	}
-	FRotator& operator/=(UnderlayingType Scalar)
-	{
-		*this = *this / Scalar;
-	
-		return *this;
-	}
-	FRotator& operator/=(const FRotator& Other)
-	{
-		*this = *this / Other;
-	
-		return *this;
-	}
-	FRotator& operator=(const FRotator& other)
-	{
-		Pitch = other.Pitch;
-		Yaw = other.Yaw;
-		Roll = other.Roll;
-	
-		return *this;
 	}
 
+	/** Create a copy of this rotator and normalize, removes all winding and creates the "shortest route" rotation. */
 	FRotator GetNormalized() const
 	{
-		FRotator rotator = *this;
-		rotator.Normalize();
-	
-		return rotator;
+		FRotator Rot = *this;
+		Rot.Normalize();
+		return Rot;
 	}
-	bool IsZero() const
+
+	/** Create a copy of this rotator and denormalize, clamping each axis to 0 - 360. */
+	FRotator GetDenormalized() const
 	{
-		return ClampAxis(Pitch) == 0 && ClampAxis(Yaw) == 0 && ClampAxis(Roll) == 0;
+		FRotator Rot = *this;
+		Rot.Pitch = ClampAxis(Rot.Pitch);
+		Rot.Yaw   = ClampAxis(Rot.Yaw);
+		Rot.Roll  = ClampAxis(Rot.Roll);
+		return Rot;
 	}
-	bool operator!=(const FRotator& Other) const
+
+	double GetComponentForAxis(EAxis Axis) const
 	{
-		return Pitch != Other.Pitch || Yaw != Other.Yaw || Roll != Other.Roll;
+		switch (Axis)
+		{
+		case EAxis::X:
+			return Roll;
+		case EAxis::Y:
+			return Pitch;
+		case EAxis::Z:
+			return Yaw;
+		case EAxis::None:
+		default:
+			return 0.0;
+		}
 	}
-	FRotator operator*(UnderlayingType Scalar) const
+	void SetComponentForAxis(EAxis Axis, double Component)
 	{
-		return { Pitch * Scalar, Yaw * Scalar, Roll * Scalar };
+		switch (Axis)
+		{
+		case EAxis::X:
+			Roll = Component;
+			break;
+		case EAxis::Y:
+			Pitch = Component;
+			break;
+		case EAxis::Z:
+			Yaw = Component;
+			break;
+		case EAxis::None:
+		default:
+			break;
+		}
 	}
-	FRotator operator*(const FRotator& Other) const
+
+	/** Decompose this Rotator into a Winding part (multiples of 360) and a Remainder part in [-180, 180]. */
+	void GetWindingAndRemainder(FRotator& Winding, FRotator& Remainder) const
 	{
-		return { Pitch * Other.Pitch, Yaw * Other.Yaw, Roll * Other.Roll };
+		//// YAW
+		Remainder.Yaw = NormalizeAxis(Yaw);
+
+		Winding.Yaw = Yaw - Remainder.Yaw;
+
+		//// PITCH
+		Remainder.Pitch = NormalizeAxis(Pitch);
+
+		Winding.Pitch = Pitch - Remainder.Pitch;
+
+		//// ROLL
+		Remainder.Roll = NormalizeAxis(Roll);
+
+		Winding.Roll = Roll - Remainder.Roll;
 	}
-	FRotator operator+(const FRotator& Other) const
+
+	/** Return the manhattan distance in degrees between this Rotator and the passed in one. */
+	double GetManhattanDistance(const FRotator& Rotator) const
 	{
-		return { Pitch + Other.Pitch, Yaw + Other.Yaw, Roll + Other.Roll };
+		return FMath::Abs(Yaw - Rotator.Yaw) + FMath::Abs(Pitch - Rotator.Pitch) + FMath::Abs(Roll - Rotator.Roll);
 	}
-	FRotator operator-(const FRotator& Other) const
+
+	/** Return a Rotator that has the same rotation but has different degree values for Yaw, Pitch, and Roll. */
+	FRotator GetEquivalentRotator() const { return FRotator(180.0 - Pitch, Yaw + 180.0, Roll + 180.0); }
+
+	/** Modify if necessary the passed in rotator to be the closest rotator to it based upon its equivalent. */
+	void SetClosestToMe(FRotator& MakeClosest) const
 	{
-		return { Pitch - Other.Pitch, Yaw - Other.Yaw, Roll - Other.Roll };
+		FRotator OtherChoice = MakeClosest.GetEquivalentRotator();
+		double FirstDiff = GetManhattanDistance(MakeClosest);
+		double SecondDiff = GetManhattanDistance(OtherChoice);
+		if (SecondDiff < FirstDiff)
+			MakeClosest = OtherChoice;
 	}
-	FRotator operator/(UnderlayingType Scalar) const
+
+	/* --- Conversions ------------------------------------------------------------ */
+
+	/*
+	* Convert a rotation into a unit vector facing in its direction.
+	*
+	* Extremely large but valid values (or invalid values from uninitialized vars) can cause
+	* SinCos to return NaN/Inf, which UE catches under ENABLE_NAN_DIAGNOSTIC.
+	*/
+	FVector Vector() const
 	{
-		if (Scalar == 0)
-			return *this;
-	
-		return { Pitch / Scalar, Yaw / Scalar, Roll / Scalar };
+		// Remove winding and clamp to [-360, 360]
+		const double PitchNoWinding = FMath::Fmod(Pitch, 360.0);
+		const double YawNoWinding = FMath::Fmod(Yaw, 360.0);
+
+		double CP, SP, CY, SY;
+		FMath::SinCos(&SP, &CP, FMath::DegreesToRadians(PitchNoWinding));
+		FMath::SinCos(&SY, &CY, FMath::DegreesToRadians(YawNoWinding));
+
+		return FVector(CP * CY, CP * SY, SP);
 	}
-	FRotator operator/(const FRotator& Other) const
+
+	/** Get Rotation as a quaternion. */
+	FQuat Quaternion() const
 	{
-		if (Other.Pitch == 0 || Other.Yaw == 0 || Other.Roll == 0)
-			return *this;
-	
-		return { Pitch / Other.Pitch, Yaw / Other.Yaw, Roll / Other.Roll };
+		const double DEG_TO_RAD = UE_DOUBLE_PI / (180.0);
+		const double RADS_DIVIDED_BY_2 = DEG_TO_RAD / 2.0;
+		double SP, SY, SR;
+		double CP, CY, CR;
+
+		const double PitchNoWinding = FMath::Fmod(Pitch, 360.0);
+		const double YawNoWinding = FMath::Fmod(Yaw, 360.0);
+		const double RollNoWinding = FMath::Fmod(Roll, 360.0);
+
+		FMath::SinCos(&SP, &CP, PitchNoWinding * RADS_DIVIDED_BY_2);
+		FMath::SinCos(&SY, &CY, YawNoWinding * RADS_DIVIDED_BY_2);
+		FMath::SinCos(&SR, &CR, RollNoWinding * RADS_DIVIDED_BY_2);
+
+		FQuat RotationQuat;
+		RotationQuat.X = CR * SP * SY - SR * CP * CY;
+		RotationQuat.Y = -CR * SP * CY - SR * CP * SY;
+		RotationQuat.Z = CR * CP * SY - SR * SP * CY;
+		RotationQuat.W = CR * CP * CY + SR * SP * SY;
+
+		return RotationQuat;
 	}
-	bool operator==(const FRotator& Other) const
+
+	/** Convert a Rotator into floating-point Euler angles (in degrees). */
+	FVector Euler() const { return FVector(Roll, Pitch, Yaw); }
+
+	/** Convert a vector of floating-point Euler angles (in degrees) into a Rotator. */
+	static FRotator MakeFromEuler(const FVector& Euler) { return FRotator(Euler.Y, Euler.Z, Euler.X); }
+
+	/*
+	* Rotate a vector by this rotator.
+	*
+	* UE routes this through FRotationMatrix(*this).TransformVector(V); the basis
+	* below is FRotationTranslationMatrix's, applied directly to avoid depending on
+	* the SDK's method-less FMatrix.
+	*/
+	FVector RotateVector(const FVector& V) const
 	{
-		return Pitch == Other.Pitch && Yaw == Other.Yaw && Roll == Other.Roll;
+		double SP, SY, SR;
+		double CP, CY, CR;
+		FMath::SinCos(&SP, &CP, FMath::DegreesToRadians(Pitch));
+		FMath::SinCos(&SY, &CY, FMath::DegreesToRadians(Yaw));
+		FMath::SinCos(&SR, &CR, FMath::DegreesToRadians(Roll));
+
+		// Rows of FRotationMatrix(*this)
+		const FVector AxisX(CP * CY, CP * SY, SP);
+		const FVector AxisY(SR * SP * CY - CR * SY, SR * SP * SY + CR * CY, -SR * CP);
+		const FVector AxisZ(-(CR * SP * CY + SR * SY), CY * SR - CR * SP * SY, CR * CP);
+
+		return AxisX * V.X + AxisY * V.Y + AxisZ * V.Z;
+	}
+
+	/** Returns the vector rotated by the inverse of this rotator. */
+	FVector UnrotateVector(const FVector& V) const
+	{
+		double SP, SY, SR;
+		double CP, CY, CR;
+		FMath::SinCos(&SP, &CP, FMath::DegreesToRadians(Pitch));
+		FMath::SinCos(&SY, &CY, FMath::DegreesToRadians(Yaw));
+		FMath::SinCos(&SR, &CR, FMath::DegreesToRadians(Roll));
+
+		const FVector AxisX(CP * CY, CP * SY, SP);
+		const FVector AxisY(SR * SP * CY - CR * SY, SR * SP * SY + CR * CY, -SR * CP);
+		const FVector AxisZ(-(CR * SP * CY + SR * SY), CY * SR - CR * SP * SY, CR * CP);
+
+		// Transposed transform, i.e. project onto the rows rather than combining them.
+		return FVector(V | AxisX, V | AxisY, V | AxisZ);
+	}
+
+	bool ContainsNaN() const
+	{
+		return (!FMath::IsFinite(Pitch) ||
+				!FMath::IsFinite(Yaw) ||
+				!FMath::IsFinite(Roll));
+	}
+
+	FString ToString() const;
+	FString ToCompactString() const;
+
+	/* --- Axis helpers ------------------------------------------------------------ */
+
+	/** Clamps an angle to the range of [0, 360). */
+	static double ClampAxis(double Angle)
+	{
+		// returns Angle in the range (-360,360)
+		Angle = FMath::Fmod(Angle, 360.0);
+
+		if (Angle < 0.0)
+		{
+			// shift to [0,360) range
+			Angle += 360.0;
+		}
+
+		return Angle;
+	}
+
+	/** Clamps an angle to the range of (-180, 180]. */
+	static double NormalizeAxis(double Angle)
+	{
+		// returns Angle in the range [0,360)
+		Angle = ClampAxis(Angle);
+
+		if (Angle > 180.0)
+		{
+			// shift to (-180,180]
+			Angle -= 360.0;
+		}
+
+		return Angle;
+	}
+
+	/** Compresses a floating point angle into a byte. */
+	static uint8 CompressAxisToByte(double Angle)
+	{
+		// map [0->360) to [0->256) and mask off any winding
+		return FMath::RoundToInt(Angle * 256.0 / 360.0) & 0xFF;
+	}
+	/** Decompress a byte into a floating point angle. */
+	static double DecompressAxisFromByte(uint8 Angle)
+	{
+		// map [0->256) to [0->360)
+		return (Angle * 360.0 / 256.0);
+	}
+	/** Compress a floating point angle into a word. */
+	static uint16 CompressAxisToShort(double Angle)
+	{
+		// map [0->360) to [0->65536) and mask off any winding
+		return FMath::RoundToInt(Angle * 65536.0 / 360.0) & 0xFFFF;
+	}
+	/** Decompress a short into a floating point angle. */
+	static double DecompressAxisFromShort(uint16 Angle)
+	{
+		// map [0->65536) to [0->360)
+		return (Angle * 360.0 / 65536.0);
 	}
 };
 DUMPER7_ASSERTS_FRotator;
+
+inline const FRotator FRotator::ZeroRotator(0.0, 0.0, 0.0);
+
+/** Scale a rotator and return. */
+inline FRotator operator*(double Scale, const FRotator& R)
+{
+	return R.operator*(Scale);
+}
 
 // ScriptStruct CoreUObject.Rotator3d
 // 0x0018 (0x0018 - 0x0000)
@@ -2094,5 +3644,569 @@ public:
 	float                                         W;                                                 // 0x000C(0x0004)(Edit, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
 };
 DUMPER7_ASSERTS_FVector4f;
+
+
+/* ============================================================================
+ * FVector / FQuat / FRotator members that touch types declared later in this
+ * file (FVector2D, FVector4, FPlane, FMatrix, FString, and each other).
+ *
+ * Ported 1:1 from UnrealEngine's Math/Vector.h, Math/Quat.h, Math/Rotator.h and
+ * Private/Math/UnrealMath.cpp; see UnrealMath.hpp for the scalar helpers.
+ * ==========================================================================*/
+
+/* --- FMatrix element access ------------------------------------------------
+ *
+ * UE's TMatrix stores T M[4][4]; the dumped FMatrix stores four FPlanes over
+ * the same 0x80 bytes, so M[Row][Col] maps onto Plane.X/Y/Z/W.
+ */
+inline double& Dumper7_MatrixElem(struct FMatrix& M, int32 Row, int32 Col)
+{
+	FPlane* Rows = &M.XPlane;
+	return (&Rows[Row].X)[Col];
+}
+
+inline double Dumper7_MatrixElem(const struct FMatrix& M, int32 Row, int32 Col)
+{
+	const FPlane* Rows = &M.XPlane;
+	return (&Rows[Row].X)[Col];
+}
+
+
+/* --- FVector ---------------------------------------------------------------*/
+
+inline FVector::FVector(const struct FVector2D V, double InZ)
+	: X(V.X), Y(V.Y), Z(InZ)
+{
+}
+
+inline FVector::FVector(const struct FVector4& V)
+	: X(V.X), Y(V.Y), Z(V.Z)
+{
+}
+
+inline FVector FVector::MirrorByPlane(const struct FPlane& Plane) const
+{
+	const FVector PlaneNormal(Plane.X, Plane.Y, Plane.Z);
+	return *this - PlaneNormal * (2.0 * (*this | PlaneNormal));
+}
+
+inline FVector FVector::PointPlaneProject(const FVector& Point, const struct FPlane& Plane)
+{
+	const FVector PlaneNormal(Plane.X, Plane.Y, Plane.Z);
+
+	//Find the distance of X from the plane
+	//Add the distance back along the normal from the point
+	return Point - PlaneNormal * ((Point | PlaneNormal) - Plane.W);
+}
+
+inline FVector FVector::PointPlaneProject(const FVector& Point, const FVector& A, const FVector& B, const FVector& C)
+{
+	// Compute the plane normal from ABC
+	const FVector Normal = ((B - A) ^ (C - A)).GetSafeNormal();
+
+	//Find the distance of X from the plane
+	//Add the distance back along the normal from the point
+	return Point - Normal * FVector::PointPlaneDist(Point, A, Normal);
+}
+
+inline struct FRotator FVector::ToOrientationRotator() const
+{
+	FRotator R;
+
+	// Find yaw.
+	R.Yaw = FMath::RadiansToDegrees(FMath::Atan2(Y, X));
+
+	// Find pitch.
+	R.Pitch = FMath::RadiansToDegrees(FMath::Atan2(Z, FMath::Sqrt(X * X + Y * Y)));
+
+	// Find roll.
+	R.Roll = 0;
+
+	return R;
+}
+
+inline struct FRotator FVector::Rotation() const
+{
+	return ToOrientationRotator();
+}
+
+inline struct FQuat FVector::ToOrientationQuat() const
+{
+	// Essentially an optimized Vector->Rotator->Quat made possible by knowing Roll == 0, and avoiding radians->degrees->radians.
+	// This is done to avoid adding any roll (which our API states as a constraint).
+	const double YawRad = FMath::Atan2(Y, X);
+	const double PitchRad = FMath::Atan2(Z, FMath::Sqrt(X * X + Y * Y));
+
+	const double DIVIDE_BY_2 = 0.5;
+	double SP, SY;
+	double CP, CY;
+
+	FMath::SinCos(&SP, &CP, PitchRad * DIVIDE_BY_2);
+	FMath::SinCos(&SY, &CY, YawRad * DIVIDE_BY_2);
+
+	FQuat RotationQuat;
+	RotationQuat.X =  SP * SY;
+	RotationQuat.Y = -SP * CY;
+	RotationQuat.Z =  CP * SY;
+	RotationQuat.W =  CP * CY;
+	return RotationQuat;
+}
+
+inline struct FVector2D FVector::UnitCartesianToSpherical() const
+{
+	const double Theta = FMath::Acos(Z / Size());
+	const double Phi = FMath::Atan2(Y, X);
+	return FVector2D(Theta, Phi);
+}
+
+inline FVector FVector::SlerpVectorToDirection(const FVector& V, const FVector& Direction, double Alpha)
+{
+	// Find rotation from A to B
+	const FQuat RotationQuat = FQuat::FindBetweenVectors(V, Direction);
+	const FVector Axis = RotationQuat.GetRotationAxis();
+	const double AngleRads = RotationQuat.GetAngle();
+
+	// Rotate from A toward B using portion of the angle specified by Alpha.
+	const FQuat DeltaQuat(Axis, AngleRads * Alpha);
+	FVector Result = DeltaQuat.RotateVector(V);
+	return Result;
+}
+
+inline FVector FVector::SlerpNormals(const FVector& NormalA, const FVector& NormalB, double Alpha)
+{
+	// Find rotation from A to B
+	const FQuat RotationQuat = FQuat::FindBetweenNormals(NormalA, NormalB);
+	const FVector Axis = RotationQuat.GetRotationAxis();
+	const double AngleRads = RotationQuat.GetAngle();
+
+	// Rotate from A toward B using portion of the angle specified by Alpha.
+	const FQuat DeltaQuat(Axis, AngleRads * Alpha);
+	FVector Result = DeltaQuat.RotateVector(NormalA);
+	return Result;
+}
+
+inline double FVector::EvaluateBezier(const FVector* ControlPoints, int32 NumPoints, TArray<FVector>& OutPoints)
+{
+	// var q is the change in t between successive evaluations.
+	const double q = 1.0 / (double)(NumPoints - 1); // q is dependent on the number of GAPS = POINTS-1
+
+	// recreate the names used in the derivation
+	const FVector& P0 = ControlPoints[0];
+	const FVector& P1 = ControlPoints[1];
+	const FVector& P2 = ControlPoints[2];
+	const FVector& P3 = ControlPoints[3];
+
+	// coefficients of the cubic polynomial that we're FDing -
+	const FVector a = P0;
+	const FVector b = (P1 - P0) * 3;
+	const FVector c = (P2 - P1 * 2 + P0) * 3;
+	const FVector d = P3 - P2 * 3 + P1 * 3 - P0;
+
+	// initial values of the poly and the 3 diffs -
+	FVector S = a;                                              // the poly value
+	FVector U = b * q + c * q * q + d * q * q * q;              // 1st order diff (quadratic)
+	FVector V = c * (2 * q * q) + d * (6 * q * q * q);          // 2nd order diff (linear)
+	FVector W = d * (6 * q * q * q);                            // 3rd order diff (constant)
+
+	// Path length.
+	double Length = 0;
+
+	FVector OldPos = P0;
+	OutPoints.Add(P0);	// first point on the curve is always P0.
+
+	for (int32 i = 1; i < NumPoints; ++i)
+	{
+		// calculate the next value and update the deltas
+		S += U;			// update poly value
+		U += V;			// update 1st order diff value
+		V += W;			// update 2st order diff value
+		// 3rd order diff is constant => no update needed.
+
+		// Update Length.
+		Length += FVector::Dist(S, OldPos);
+		OldPos = S;
+
+		OutPoints.Add(S);
+	}
+
+	// Return path length as experienced in sequence (linear interpolation between points).
+	return Length;
+}
+
+inline void FVector::GenerateClusterCenters(TArray<FVector>& Clusters, const TArray<FVector>& Points, int32 NumIterations, int32 NumConnectionsToBeValid)
+{
+	struct FClusterMovedHereToMakeCompile
+	{
+		FVector ClusterPosAccum;
+		int32 ClusterSize;
+	};
+
+	// Check we have >0 points and clusters
+	if (Points.Num() == 0 || Clusters.Num() == 0)
+	{
+		return;
+	}
+
+	// Temp storage for each cluster that mirrors the order of the passed in Clusters array
+	TArray<FClusterMovedHereToMakeCompile> ClusterData;
+	ClusterData.AddZeroed(Clusters.Num());
+
+	// Then iterate
+	for (int32 ItCount = 0; ItCount < NumIterations; ItCount++)
+	{
+		// Classify each point - find closest cluster center
+		for (int32 i = 0; i < Points.Num(); i++)
+		{
+			const FVector& Pos = Points[i];
+
+			// Iterate over all clusters to find closes one
+			int32 NearestClusterIndex = -1;
+			double NearestClusterDistSqr = UE_DOUBLE_BIG_NUMBER;
+			for (int32 j = 0; j < Clusters.Num(); j++)
+			{
+				const double DistSqr = (Pos - Clusters[j]).SizeSquared();
+				if (DistSqr < NearestClusterDistSqr)
+				{
+					NearestClusterDistSqr = DistSqr;
+					NearestClusterIndex = j;
+				}
+			}
+			// Update its info with this point
+			if (NearestClusterIndex != -1)
+			{
+				ClusterData[NearestClusterIndex].ClusterPosAccum += Pos;
+				ClusterData[NearestClusterIndex].ClusterSize++;
+			}
+		}
+
+		// All points classified - update cluster center as average of membership
+		for (int32 i = 0; i < Clusters.Num(); i++)
+		{
+			if (ClusterData[i].ClusterSize > 0)
+			{
+				Clusters[i] = ClusterData[i].ClusterPosAccum / (double)ClusterData[i].ClusterSize;
+			}
+		}
+	}
+
+	// so now after we have possible cluster centers we want to remove the ones that are outliers and not part of the main cluster
+	for (int32 i = 0; i < ClusterData.Num(); i++)
+	{
+		if (ClusterData[i].ClusterSize < NumConnectionsToBeValid)
+		{
+			Clusters.RemoveAt(i);
+		}
+	}
+}
+
+inline FString FVector::ToString() const
+{
+	return FString(std::format(L"X={:3.3f} Y={:3.3f} Z={:3.3f}", X, Y, Z));
+}
+
+inline FString FVector::ToCompactString() const
+{
+	if (IsNearlyZero())
+	{
+		return FString(L"V(0)");
+	}
+
+	std::wstring ReturnString(L"V(");
+	bool bIsEmptyString = true;
+	if (!FMath::IsNearlyZero(X))
+	{
+		ReturnString += std::format(L"X={:.2f}", X);
+		bIsEmptyString = false;
+	}
+	if (!FMath::IsNearlyZero(Y))
+	{
+		if (!bIsEmptyString)
+		{
+			ReturnString += L", ";
+		}
+		ReturnString += std::format(L"Y={:.2f}", Y);
+		bIsEmptyString = false;
+	}
+	if (!FMath::IsNearlyZero(Z))
+	{
+		if (!bIsEmptyString)
+		{
+			ReturnString += L", ";
+		}
+		ReturnString += std::format(L"Z={:.2f}", Z);
+		bIsEmptyString = false;
+	}
+	ReturnString += L")";
+	return FString(ReturnString);
+}
+
+
+/* --- FQuat -----------------------------------------------------------------*/
+
+inline FQuat::FQuat(const struct FRotator& R)
+{
+	*this = R.Quaternion();
+}
+
+inline FQuat FQuat::MakeFromRotator(const struct FRotator& R)
+{
+	return FQuat(R);
+}
+
+inline FQuat::FQuat(const struct FMatrix& M)
+{
+	const FVector MatXAxis(Dumper7_MatrixElem(M, 0, 0), Dumper7_MatrixElem(M, 0, 1), Dumper7_MatrixElem(M, 0, 2));
+	const FVector MatYAxis(Dumper7_MatrixElem(M, 1, 0), Dumper7_MatrixElem(M, 1, 1), Dumper7_MatrixElem(M, 1, 2));
+	const FVector MatZAxis(Dumper7_MatrixElem(M, 2, 0), Dumper7_MatrixElem(M, 2, 1), Dumper7_MatrixElem(M, 2, 2));
+
+	// If Matrix is NULL, return Identity quaternion. If any of them is 0, you won't be able to construct rotation
+	// if you have two plane at least, we can reconstruct the frame using cross product, but that's a bit expensive op to do here
+	// for now, if you convert to matrix from 0 scale and convert back, you'll lose rotation. Don't do that.
+	if (MatXAxis.IsNearlyZero() || MatYAxis.IsNearlyZero() || MatZAxis.IsNearlyZero())
+	{
+		*this = FQuat::Identity;
+		return;
+	}
+
+	double s;
+
+	// Check diagonal (trace)
+	const double tr = Dumper7_MatrixElem(M, 0, 0) + Dumper7_MatrixElem(M, 1, 1) + Dumper7_MatrixElem(M, 2, 2);
+
+	if (tr > 0.0)
+	{
+		double InvS = FMath::InvSqrt(tr + 1.0);
+		this->W = (0.5 * (1.0 / InvS));
+		s = 0.5 * InvS;
+
+		this->X = ((Dumper7_MatrixElem(M, 1, 2) - Dumper7_MatrixElem(M, 2, 1)) * s);
+		this->Y = ((Dumper7_MatrixElem(M, 2, 0) - Dumper7_MatrixElem(M, 0, 2)) * s);
+		this->Z = ((Dumper7_MatrixElem(M, 0, 1) - Dumper7_MatrixElem(M, 1, 0)) * s);
+	}
+	else
+	{
+		// diagonal is negative
+		int32 i = 0;
+
+		if (Dumper7_MatrixElem(M, 1, 1) > Dumper7_MatrixElem(M, 0, 0))
+			i = 1;
+
+		if (Dumper7_MatrixElem(M, 2, 2) > Dumper7_MatrixElem(M, i, i))
+			i = 2;
+
+		static constexpr int32 nxt[3] = { 1, 2, 0 };
+		const int32 j = nxt[i];
+		const int32 k = nxt[j];
+
+		s = Dumper7_MatrixElem(M, i, i) - Dumper7_MatrixElem(M, j, j) - Dumper7_MatrixElem(M, k, k) + 1.0;
+
+		double InvS = FMath::InvSqrt(s);
+
+		double qt[4];
+		qt[i] = 0.5 * (1.0 / InvS);
+
+		s = 0.5 * InvS;
+
+		qt[3] = (Dumper7_MatrixElem(M, j, k) - Dumper7_MatrixElem(M, k, j)) * s;
+		qt[j] = (Dumper7_MatrixElem(M, i, j) + Dumper7_MatrixElem(M, j, i)) * s;
+		qt[k] = (Dumper7_MatrixElem(M, i, k) + Dumper7_MatrixElem(M, k, i)) * s;
+
+		this->X = qt[0];
+		this->Y = qt[1];
+		this->Z = qt[2];
+		this->W = qt[3];
+	}
+}
+
+inline struct FMatrix FQuat::operator*(const struct FMatrix& M) const
+{
+	FMatrix Result;
+	const FQuat Inv = Inverse();
+	for (int32 I = 0; I < 4; ++I)
+	{
+		const FQuat VQ(Dumper7_MatrixElem(M, I, 0), Dumper7_MatrixElem(M, I, 1), Dumper7_MatrixElem(M, I, 2), Dumper7_MatrixElem(M, I, 3));
+		const FQuat VT = *this * VQ;
+		const FQuat VR = VT * Inv;
+		Dumper7_MatrixElem(Result, I, 0) = VR.X;
+		Dumper7_MatrixElem(Result, I, 1) = VR.Y;
+		Dumper7_MatrixElem(Result, I, 2) = VR.Z;
+		Dumper7_MatrixElem(Result, I, 3) = VR.W;
+	}
+
+	return Result;
+}
+
+inline void FQuat::ToMatrix(struct FMatrix& R) const
+{
+	// Note: copied and modified from TQuatRotationTranslationMatrix<> mainly to avoid circular dependency.
+	const double x2 = X + X;    const double y2 = Y + Y;    const double z2 = Z + Z;
+	const double xx = X * x2;   const double xy = X * y2;   const double xz = X * z2;
+	const double yy = Y * y2;   const double yz = Y * z2;   const double zz = Z * z2;
+	const double wx = W * x2;   const double wy = W * y2;   const double wz = W * z2;
+
+	Dumper7_MatrixElem(R, 0, 0) = 1.0 - (yy + zz);	Dumper7_MatrixElem(R, 1, 0) = xy - wz;			Dumper7_MatrixElem(R, 2, 0) = xz + wy;			Dumper7_MatrixElem(R, 3, 0) = 0.0;
+	Dumper7_MatrixElem(R, 0, 1) = xy + wz;			Dumper7_MatrixElem(R, 1, 1) = 1.0 - (xx + zz);	Dumper7_MatrixElem(R, 2, 1) = yz - wx;			Dumper7_MatrixElem(R, 3, 1) = 0.0;
+	Dumper7_MatrixElem(R, 0, 2) = xz - wy;			Dumper7_MatrixElem(R, 1, 2) = yz + wx;			Dumper7_MatrixElem(R, 2, 2) = 1.0 - (xx + yy);	Dumper7_MatrixElem(R, 3, 2) = 0.0;
+	Dumper7_MatrixElem(R, 0, 3) = 0.0;				Dumper7_MatrixElem(R, 1, 3) = 0.0;				Dumper7_MatrixElem(R, 2, 3) = 0.0;				Dumper7_MatrixElem(R, 3, 3) = 1.0;
+}
+
+inline struct FMatrix FQuat::ToMatrix() const
+{
+	FMatrix R;
+	ToMatrix(R);
+	return R;
+}
+
+inline struct FRotator FQuat::Rotator() const
+{
+	const double SingularityTest = Z * X - W * Y;
+	const double YawY = 2.0 * (W * Z + X * Y);
+	const double YawX = (1.0 - 2.0 * (FMath::Square(Y) + FMath::Square(Z)));
+
+	// reference
+	// http://en.wikipedia.org/wiki/Conversion_between_quaternions_and_Euler_angles
+	// http://www.euclideanspace.com/maths/geometry/rotations/conversions/quaternionToEuler/
+
+	// this value was found from experience, the above websites recommend different values
+	// but that isn't the case for us, so I went through different testing, and finally found the case
+	// where both of world lives happily.
+	const double SINGULARITY_THRESHOLD = 0.4999995;
+	const double RAD_TO_DEG = (180.0 / UE_DOUBLE_PI);
+	double Pitch, Yaw, Roll;
+
+	if (SingularityTest < -SINGULARITY_THRESHOLD)
+	{
+		Pitch = -90.0;
+		Yaw = FRotator::NormalizeAxis(-2.0 * FMath::Atan2(X, W) * RAD_TO_DEG);
+		Roll = 0.0;
+	}
+	else if (SingularityTest > SINGULARITY_THRESHOLD)
+	{
+		Pitch = 90.0;
+		Yaw = FRotator::NormalizeAxis(2.0 * FMath::Atan2(X, W) * RAD_TO_DEG);
+		Roll = 0.0;
+	}
+	else
+	{
+		Pitch = (FMath::Asin(2.0 * SingularityTest) * RAD_TO_DEG); // Note: not FastAsin like the float implementation
+		Yaw = (FMath::Atan2(YawY, YawX) * RAD_TO_DEG);
+		Roll = (FMath::Atan2(-2.0 * (W * X + Y * Z), (1.0 - 2.0 * (FMath::Square(X) + FMath::Square(Y)))) * RAD_TO_DEG);
+	}
+
+	return FRotator(Pitch, Yaw, Roll);
+}
+
+inline FVector FQuat::Euler() const
+{
+	return Rotator().Euler();
+}
+
+inline FQuat FQuat::MakeFromEuler(const FVector& Euler)
+{
+	return FQuat(FRotator::MakeFromEuler(Euler));
+}
+
+/*
+* Based on:
+* http://lolengine.net/blog/2014/02/24/quaternion-from-two-vectors-final
+* http://www.euclideanspace.com/maths/algebra/vectors/angleBetween/index.htm
+*/
+inline FQuat Dumper7_FindBetween_Helper(const FVector& A, const FVector& B, double NormAB)
+{
+	double W = NormAB + FVector::DotProduct(A, B);
+	FQuat Result;
+
+	if (W >= 1e-6 * NormAB)
+	{
+		//Result = FVector::CrossProduct(A, B);
+		Result = FQuat(
+			A.Y * B.Z - A.Z * B.Y,
+			A.Z * B.X - A.X * B.Z,
+			A.X * B.Y - A.Y * B.X,
+			W);
+	}
+	else
+	{
+		// A and B point in opposite directions
+		W = 0.0;
+		const double X = FMath::Abs(A.X);
+		const double Y = FMath::Abs(A.Y);
+		const double Z = FMath::Abs(A.Z);
+
+		// Find orthogonal basis.
+		const FVector Basis = (X > Y && X > Z) ? FVector::YAxisVector : -FVector::XAxisVector;
+
+		//Result = FVector::CrossProduct(A, Basis);
+		Result = FQuat(
+			A.Y * Basis.Z - A.Z * Basis.Y,
+			A.Z * Basis.X - A.X * Basis.Z,
+			A.X * Basis.Y - A.Y * Basis.X,
+			W);
+	}
+
+	Result.Normalize();
+	return Result;
+}
+
+inline FQuat FQuat::FindBetweenNormals(const FVector& A, const FVector& B)
+{
+	const double NormAB = 1.0;
+	return Dumper7_FindBetween_Helper(A, B, NormAB);
+}
+
+inline FQuat FQuat::FindBetweenVectors(const FVector& A, const FVector& B)
+{
+	const double NormAB = FMath::Sqrt(A.SizeSquared() * B.SizeSquared());
+	return Dumper7_FindBetween_Helper(A, B, NormAB);
+}
+
+inline FString FQuat::ToString() const
+{
+	return FString(std::format(L"X={:.9f} Y={:.9f} Z={:.9f} W={:.9f}", X, Y, Z, W));
+}
+
+
+/* --- FRotator --------------------------------------------------------------*/
+
+inline FString FRotator::ToString() const
+{
+	return FString(std::format(L"P={:f} Y={:f} R={:f}", Pitch, Yaw, Roll));
+}
+
+inline FString FRotator::ToCompactString() const
+{
+	if (IsNearlyZero())
+	{
+		return FString(L"R(0)");
+	}
+
+	std::wstring ReturnString(L"R(");
+	bool bIsEmptyString = true;
+	if (!FMath::IsNearlyZero(Pitch))
+	{
+		ReturnString += std::format(L"P={:.2f}", Pitch);
+		bIsEmptyString = false;
+	}
+	if (!FMath::IsNearlyZero(Yaw))
+	{
+		if (!bIsEmptyString)
+		{
+			ReturnString += L", ";
+		}
+		ReturnString += std::format(L"Y={:.2f}", Yaw);
+		bIsEmptyString = false;
+	}
+	if (!FMath::IsNearlyZero(Roll))
+	{
+		if (!bIsEmptyString)
+		{
+			ReturnString += L", ";
+		}
+		ReturnString += std::format(L"R={:.2f}", Roll);
+		bIsEmptyString = false;
+	}
+	ReturnString += L")";
+	return FString(ReturnString);
+}
 
 SDK_NAMESPACE_END

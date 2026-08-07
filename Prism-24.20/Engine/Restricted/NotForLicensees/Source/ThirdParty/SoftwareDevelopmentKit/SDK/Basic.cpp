@@ -17,6 +17,23 @@
 #include "CoreUObject_structs.hpp"
 #include "Engine_classes.hpp"
 
+/*
+* Declared in UnrealContainers.hpp, defined here because resolving it needs the image base and that
+* header is included before InSDKUtils is declared.
+*
+* This is the game's own FMemory::Realloc, so buffers the containers allocate are indistinguishable
+* from ones the engine allocated: the engine can grow or release them, and we can release its.
+*/
+void* UC::FMemory::Realloc(void* Original, uint64 Count, uint32 Alignment)
+{
+	using FReallocType = void* (*)(void*, uint64, uint32);
+
+	static const FReallocType GameRealloc = reinterpret_cast<FReallocType>(
+		SDK_NAMESPACE_NAME ::InSDKUtils::GetImageBase() + SDK_NAMESPACE_NAME ::Offsets::Realloc);
+
+	return GameRealloc(Original, Count, Alignment);
+}
+
 SDK_NAMESPACE_START
 uintptr_t InSDKUtils::GetImageBase()
 {
@@ -140,6 +157,25 @@ bool FWeakObjectPtr::operator!=(const class UObject* Other) const
 }
 
 
+// Predefined Function
+
+FWeakObjectPtr& FWeakObjectPtr::operator=(const class UObject* Object)
+{
+	if (Object)
+	{
+		const int32 InternalIndex = Object->Index;
+		ObjectIndex = InternalIndex;
+		ObjectSerialNumber = UObject::GObjects->GetSerialNumberByIndex(InternalIndex);
+	}
+	else
+	{
+		Reset();
+	}
+
+	return *this;
+}
+
+
 /*----------------------------------------------------------------------------
 	FScriptFunctionOverride
 ----------------------------------------------------------------------------*/
@@ -159,6 +195,32 @@ namespace ScriptFunctionOverrideImpl
 		constexpr DWORD ExecutableFlags = PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY;
 
 		return (Info.Protect & ExecutableFlags) != 0;
+	}
+
+	/*
+	* How many entries a virtual function table has.
+	*
+	* MSVC lays vtables out back to back, each one preceded by a pointer to its RTTI complete object
+	* locator. That locator points into read-only data rather than code, so walking forward while the
+	* entries are executable stops exactly at the end of this class's table - the next thing along is
+	* the neighbouring table's locator, which is not executable.
+	*
+	* The cap matches the displacement limit ResolveNativeImplementation already enforces, so both
+	* paths agree on what counts as a plausible table.
+	*/
+	static int32 GetVirtualFunctionTableLength(void** VirtualFunctionTable)
+	{
+		constexpr int32 MaxSlots = 0x4000 / static_cast<int32>(sizeof(void*));
+
+		if (VirtualFunctionTable == nullptr)
+			return 0;
+
+		int32 NumSlots = 0;
+
+		while (NumSlots < MaxSlots && IsExecutableAddress(VirtualFunctionTable[NumSlots]))
+			NumSlots++;
+
+		return NumSlots;
 	}
 
 	/*
@@ -354,6 +416,76 @@ bool FScriptFunctionOverride::Install(UFunction* Function, UObject* DefaultObjec
 	Original = NativeOverride.GetOriginal();
 
 	return true;
+}
+
+bool FScriptFunctionOverride::InstallAtVirtualIndex(UObject* DefaultObject, int32 SlotIndex, void* Replacement)
+{
+	if (IsInstalled() || DefaultObject == nullptr || Replacement == nullptr || SlotIndex < 0)
+		return false;
+
+	void** const VirtualFunctionTable = *reinterpret_cast<void***>(DefaultObject);
+
+	if (VirtualFunctionTable == nullptr)
+		return false;
+
+	/*
+	* The index came from outside, so the slot has to be shown to be inside this object's own table
+	* before anything is written to it.
+	*
+	* Checking that the entry is executable is not enough on its own: past the end of one vtable is
+	* usually the next class's, so an index that overshoots still lands on real function pointers and
+	* would silently displace a virtual belonging to something else entirely. Bounding by the table's
+	* own length is what catches that - and it is what catches a byte displacement being passed where
+	* an index was wanted, which is the easy mistake to make when the number came out of a
+	* 'call qword ptr [rax+0E8h]' in a disassembler.
+	*/
+	/*const int32 NumSlots = ScriptFunctionOverrideImpl::GetVirtualFunctionTableLength(VirtualFunctionTable);
+
+	if (SlotIndex >= NumSlots)
+		return false;*/
+
+	void* const Implementation = VirtualFunctionTable[SlotIndex];
+
+/*	if (!ScriptFunctionOverrideImpl::IsExecutableAddress(Implementation))
+		return false;*/
+
+	if (!VirtualOverride.Install(DefaultObject, SlotIndex, Replacement).IsValid())
+		return false;
+
+	/* Recorded so Remove() takes the same path back out that an auto-resolved install would. */
+	Resolved.Kind = FNativeImplementation::EKind::VirtualFunctionSlot;
+	Resolved.SlotIndex = SlotIndex;
+	Resolved.Address = Implementation;
+
+	Original = VirtualOverride.GetOriginal();
+
+	return true;
+}
+
+bool FScriptFunctionOverride::InstallAtVirtualIndex(const char* ClassName, int32 SlotIndex, void* Replacement)
+{
+	UClass* const Class = UObject::FindClassFast(ClassName);
+
+	if (Class == nullptr)
+		return false;
+
+	return InstallAtVirtualIndex(BasicFilesImplUtils::GetDefaultObjectImpl(Class), SlotIndex, Replacement);
+}
+
+bool FScriptFunctionOverride::InstallAtVTableOffset(UObject* DefaultObject, int32 ByteOffset, void* Replacement)
+{
+	if (ByteOffset < 0 || (ByteOffset % sizeof(void*)) != 0)
+		return false;
+
+	return InstallAtVirtualIndex(DefaultObject, ByteOffset / static_cast<int32>(sizeof(void*)), Replacement);
+}
+
+bool FScriptFunctionOverride::InstallAtVTableOffset(const char* ClassName, int32 ByteOffset, void* Replacement)
+{
+	if (ByteOffset < 0 || (ByteOffset % sizeof(void*)) != 0)
+		return false;
+
+	return InstallAtVirtualIndex(ClassName, ByteOffset / static_cast<int32>(sizeof(void*)), Replacement);
 }
 
 bool FScriptFunctionOverride::Install(const char* ClassName, const char* FunctionName, void* Replacement)
