@@ -7,6 +7,15 @@
 
 PRISM_NAMESPACE_START
 
+/**
+ * The definition's MaxStackSize, evaluated through its curve table when it has one.
+ *
+ * Defined in FortInventory.cpp - it still wants a home of its own, but loot drops need the same
+ * answer the inventory does when they split a package's count into stacks, so it is declared here
+ * rather than duplicated there.
+ */
+int32 GetMaxStackSize(UFortItemDefinition* ItemDefinition);
+
 class AFortInventory : public UE_EXTENDS_SDK_CLASS(AFortInventory)
 {
 public:

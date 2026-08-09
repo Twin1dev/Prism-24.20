@@ -11,8 +11,11 @@ static bool CanMergeIntoStack(const FFortItemEntry& NewEntry, const FFortItemEnt
 	if (ExistingEntry.Count >= MaxStack)
 		return false;
 
-	if (ExistingEntry.Durability < 1.0f)
+/*	if (ExistingEntry.Durability < 1.0f)
+	{
+		UE_LOG(LogPrism, Log, __FUNCTION__": ExistingEntry.Durability < 1.0f");
 		return false;
+	}*/
 
 	return FFortItemEntry::CanStackTogether(NewEntry, ExistingEntry);
 }
@@ -49,6 +52,27 @@ static bool IsPrimaryQuickBar(UFortItemDefinition* ItemDefinition)
 		!ItemDefinition->IsA<UFortTrapItemDefinition>());
 }
 
+// TODO: Move to own class
+int32 GetMaxStackSize(UFortItemDefinition* ItemDefinition)
+{
+	float MaxStackSize = 0;
+
+	if (!ItemDefinition->MaxStackSize.Curve.CurveTable)
+		MaxStackSize = ItemDefinition->MaxStackSize.Value;
+	else
+	{
+		EEvaluateCurveTableResult Result;
+		UDataTableFunctionLibrary::GetDefaultObj()->EvaluateCurveTableRow(ItemDefinition->MaxStackSize.Curve.CurveTable, ItemDefinition->MaxStackSize.Curve.RowName, 0, &Result, &MaxStackSize, FString());
+
+		if (Result == EEvaluateCurveTableResult::RowNotFound)
+		{
+			UE_LOG(LogPrism, Warning, "Failed to find MaxStackSize Row for Def");
+		}
+	}
+
+	return MaxStackSize;
+}
+
 UFortWorldItem* AFortInventory::AddItem(const FFortItemEntry& ItemEntry)
 {
 	if (!ItemEntry.IsValidItemEntry() || ItemEntry.Count <= 0)
@@ -61,7 +85,9 @@ UFortWorldItem* AFortInventory::AddItem(const FFortItemEntry& ItemEntry)
 	}
 
 	UFortItemDefinition* ItemDefinition = ItemEntry.ItemDefinition;
-	const int32 MaxStack = ItemDefinition->GetMaxStackSize(nullptr);
+	const int32 MaxStack = GetMaxStackSize(ItemDefinition);
+
+	UE_LOG(LogPrism, Log, "ItemDef %s MaxStackSize: %d", ItemDefinition->GetName().c_str(), MaxStack);
 
 	int32 Remaining = ItemEntry.Count;
 	UFortWorldItem* ResultItem = nullptr;
@@ -75,7 +101,10 @@ UFortWorldItem* AFortInventory::AddItem(const FFortItemEntry& ItemEntry)
 
 			FFortItemEntry& ExistingEntry = Inventory.ReplicatedEntries[Index];
 			if (!CanMergeIntoStack(ItemEntry, ExistingEntry, MaxStack))
+			{
+				UE_LOG(LogPrism, Log, __FUNCTION__": !CanMergeIntoStack");
 				continue;
+			}
 
 			const int32 Room = MaxStack - ExistingEntry.Count;
 			const int32 AddedAmount = Remaining < Room ? Remaining : Room;
@@ -238,7 +267,7 @@ bool AFortInventory::SetItemCount(FGuid ItemGuid, int32 NewCount)
 		return true;
 	}
 
-	const int32 MaxStack = Entry->ItemDefinition->GetMaxStackSize(nullptr);
+	const int32 MaxStack = GetMaxStackSize(Entry->ItemDefinition);
 	const int32 ClampedCount = NewCount < MaxStack ? NewCount : MaxStack;
 
 	if (ClampedCount == Entry->Count)

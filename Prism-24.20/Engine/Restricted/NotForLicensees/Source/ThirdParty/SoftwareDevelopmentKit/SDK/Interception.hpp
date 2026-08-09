@@ -25,6 +25,8 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <utility>
@@ -353,7 +355,60 @@ namespace UE::Interception
 		static std::vector<void*> FindCallSites(const void* SearchStart, SIZE_T SearchSize, const void* Destination);
 
 		FFunctionOverrideHandle Install(void* CallSite, void* NewDestination);
+
+		/**
+		 * Rewrites a call site named only by its image-relative offset, which is how a
+		 * disassembler reports one.
+		 */
+		FFunctionOverrideHandle InstallAtRelativeAddress(uint64 RelativeVirtualAddress, void* NewDestination, const wchar_t* ModuleName = nullptr);
+
 		bool Remove();
+
+		/**
+		 * As above, binding a member function as the new destination and reporting the call's
+		 * previous target - so the replacement can chain to whatever the call used to reach.
+		 *
+		 * The replacement takes the callee's parameters, not the caller's: this redirects one
+		 * CALL, so the signature is the signature of the function being called.
+		 */
+		template<typename ClassType, typename ReturnType, typename... ArgTypes>
+		bool Install(void* CallSite, ReturnType (ClassType::*NewDestination)(ArgTypes...),
+			ReturnType (**OutOriginalDestination)(ClassType*, ArgTypes...) = nullptr)
+		{
+			if (!Install(CallSite, ToCallSiteFunctionAddress(NewDestination)).IsValid())
+				return false;
+
+			if (OutOriginalDestination != nullptr)
+				*OutOriginalDestination = reinterpret_cast<ReturnType (*)(ClassType*, ArgTypes...)>(OriginalDestination);
+
+			return true;
+		}
+
+		template<typename ClassType, typename ReturnType, typename... ArgTypes>
+		bool InstallAtRelativeAddress(uint64 RelativeVirtualAddress, ReturnType (ClassType::*NewDestination)(ArgTypes...),
+			ReturnType (**OutOriginalDestination)(ClassType*, ArgTypes...) = nullptr, const wchar_t* ModuleName = nullptr)
+		{
+			if (!InstallAtRelativeAddress(RelativeVirtualAddress, ToCallSiteFunctionAddress(NewDestination), ModuleName).IsValid())
+				return false;
+
+			if (OutOriginalDestination != nullptr)
+				*OutOriginalDestination = reinterpret_cast<ReturnType (*)(ClassType*, ArgTypes...)>(OriginalDestination);
+
+			return true;
+		}
+
+		/** Flattens a member function pointer to the address the CALL will be pointed at. */
+		template<typename MemberFunctionType>
+		static void* ToCallSiteFunctionAddress(MemberFunctionType MemberFunction)
+		{
+			static_assert(sizeof(MemberFunctionType) == sizeof(void*),
+				"A call-site replacement must be a non-virtual member of a single-inheritance class, so that its pointer is a plain address.");
+
+			void* Address = nullptr;
+			std::memcpy(&Address, &MemberFunction, sizeof(void*));
+
+			return Address;
+		}
 
 		bool IsInstalled() const { return Handle.IsValid(); }
 
@@ -367,6 +422,97 @@ namespace UE::Interception
 	private:
 		FFunctionOverrideHandle Handle;
 		void* CallSiteAddress = nullptr;
+		void* OriginalDestination = nullptr;
+	};
+
+	/*-----------------------------------------------------------------------------
+		FMultiCallSiteOverride
+	-----------------------------------------------------------------------------*/
+
+	/**
+	 * One replacement, installed over any number of call sites.
+	 *
+	 * FCallSiteOverride owns a single CALL - Install() opens with IsInstalled() and refuses to run
+	 * twice - so redirecting the same function at several places means one override object per
+	 * place. This holds them, so the call sites can be listed at the point of use instead.
+	 *
+	 * Every site must currently call the same destination. There is one original to chain to, so
+	 * a site pointing somewhere else is refused rather than hooked with the wrong original; if you
+	 * genuinely need to redirect calls to different functions, use separate objects.
+	 */
+	class FMultiCallSiteOverride
+	{
+	public:
+		FMultiCallSiteOverride() = default;
+		~FMultiCallSiteOverride() = default;
+
+		FMultiCallSiteOverride(const FMultiCallSiteOverride&) = delete;
+		FMultiCallSiteOverride& operator=(const FMultiCallSiteOverride&) = delete;
+
+		/** Redirects one more call site. Fails if it does not currently call the same destination as the rest. */
+		FFunctionOverrideHandle Install(void* CallSite, void* NewDestination);
+		FFunctionOverrideHandle InstallAtRelativeAddress(uint64 RelativeVirtualAddress, void* NewDestination, const wchar_t* ModuleName = nullptr);
+
+		/** Redirects several at once, returning how many were installed. Compare against the list's size. */
+		int32 InstallAtRelativeAddresses(std::initializer_list<uint64> RelativeVirtualAddresses, void* NewDestination, const wchar_t* ModuleName = nullptr);
+
+		/** Restores every call site. */
+		bool RemoveAll();
+
+		int32 Num() const { return static_cast<int32>(Overrides.size()); }
+		bool IsInstalled() const { return !Overrides.empty(); }
+
+		/** What all of these call sites used to reach. */
+		void* GetOriginalDestination() const { return OriginalDestination; }
+
+		template<typename FuncType>
+		FuncType GetOriginalDestination() const { return reinterpret_cast<FuncType>(OriginalDestination); }
+
+		template<typename ClassType, typename ReturnType, typename... ArgTypes>
+		bool Install(void* CallSite, ReturnType (ClassType::*NewDestination)(ArgTypes...),
+			ReturnType (**OutOriginalDestination)(ClassType*, ArgTypes...) = nullptr)
+		{
+			if (!Install(CallSite, FCallSiteOverride::ToCallSiteFunctionAddress(NewDestination)).IsValid())
+				return false;
+
+			if (OutOriginalDestination != nullptr)
+				*OutOriginalDestination = reinterpret_cast<ReturnType (*)(ClassType*, ArgTypes...)>(OriginalDestination);
+
+			return true;
+		}
+
+		template<typename ClassType, typename ReturnType, typename... ArgTypes>
+		bool InstallAtRelativeAddress(uint64 RelativeVirtualAddress, ReturnType (ClassType::*NewDestination)(ArgTypes...),
+			ReturnType (**OutOriginalDestination)(ClassType*, ArgTypes...) = nullptr, const wchar_t* ModuleName = nullptr)
+		{
+			if (!InstallAtRelativeAddress(RelativeVirtualAddress,
+				FCallSiteOverride::ToCallSiteFunctionAddress(NewDestination), ModuleName).IsValid())
+			{
+				return false;
+			}
+
+			if (OutOriginalDestination != nullptr)
+				*OutOriginalDestination = reinterpret_cast<ReturnType (*)(ClassType*, ArgTypes...)>(OriginalDestination);
+
+			return true;
+		}
+
+		template<typename ClassType, typename ReturnType, typename... ArgTypes>
+		int32 InstallAtRelativeAddresses(std::initializer_list<uint64> RelativeVirtualAddresses,
+			ReturnType (ClassType::*NewDestination)(ArgTypes...),
+			ReturnType (**OutOriginalDestination)(ClassType*, ArgTypes...) = nullptr, const wchar_t* ModuleName = nullptr)
+		{
+			const int32 NumInstalled = InstallAtRelativeAddresses(RelativeVirtualAddresses,
+				FCallSiteOverride::ToCallSiteFunctionAddress(NewDestination), ModuleName);
+
+			if (OutOriginalDestination != nullptr && OriginalDestination != nullptr)
+				*OutOriginalDestination = reinterpret_cast<ReturnType (*)(ClassType*, ArgTypes...)>(OriginalDestination);
+
+			return NumInstalled;
+		}
+
+	private:
+		std::vector<std::unique_ptr<FCallSiteOverride>> Overrides;
 		void* OriginalDestination = nullptr;
 	};
 
@@ -545,3 +691,63 @@ namespace UE::Interception
 		}                                                                                                                          \
 	};                                                                                                                             \
 	static inline F##FunctionName##NativeOverride FunctionName##_Override
+
+/**
+ * Declares the storage behind a call-site override: the pointer to the call's previous target, and
+ * the override that rewrites it. Declare the member function itself as usual, just above.
+ *
+ *     void OnDamageServer(float Damage);
+ *     UE_DECLARE_CALL_SITE_OVERRIDE(OnDamageServer);
+ *
+ * This redirects individual CALLs rather than the function they reach, so every other caller of that
+ * function is left alone. Installing takes nothing but the call sites, as image-relative offsets -
+ * the address a disassembler shows for the CALL instruction itself, not for its destination.
+ *
+ * One site:
+ *
+ *     OnDamageServer_CallSite.InstallAtRelativeAddress(0x1234567);
+ *
+ * or as many as you like, which is the usual case since a function is rarely called from one place.
+ * The return value is how many were installed - compare it against the list, because a site that
+ * does not currently call the same destination as the rest is refused:
+ *
+ *     const int32 NumInstalled = OnDamageServer_CallSite.InstallAtRelativeAddresses(
+ *         { 0x1234567, 0x1234890, 0x1235ABC });
+ *
+ *     return OnDamageServer_Original(this, Damage);
+ *
+ * The member function's signature is the signature of the function being *called*, since that is
+ * what the CALL is set up for. A call site further than 2GB from the replacement - which is every
+ * game-to-module rewrite, because the images are loaded far apart - is routed through an absolute
+ * jump allocated within reach, transparently.
+ */
+#define UE_DECLARE_CALL_SITE_OVERRIDE(FunctionName)                                                                                \
+	static inline UE::Interception::TOriginalFunction<decltype(&ThisClass::FunctionName)>::Type FunctionName##_Original = nullptr; \
+                                                                                                                                   \
+	/* Bound to ThisClass::FunctionName, exactly as the native and script override macros are.    */                               \
+	struct F##FunctionName##CallSiteOverride : UE::Interception::FMultiCallSiteOverride                                            \
+	{                                                                                                                              \
+		using FMultiCallSiteOverride::Install;                                                                                     \
+		using FMultiCallSiteOverride::InstallAtRelativeAddress;                                                                    \
+		using FMultiCallSiteOverride::InstallAtRelativeAddresses;                                                                  \
+                                                                                                                                   \
+		bool Install(void* CallSite)                                                                                               \
+		{                                                                                                                          \
+			return FMultiCallSiteOverride::Install(CallSite, &ThisClass::FunctionName, &ThisClass::FunctionName##_Original);       \
+		}                                                                                                                          \
+                                                                                                                                   \
+		bool InstallAtRelativeAddress(UE::Interception::uint64 RelativeVirtualAddress, const wchar_t* ModuleName = nullptr)        \
+		{                                                                                                                          \
+			return FMultiCallSiteOverride::InstallAtRelativeAddress(RelativeVirtualAddress, &ThisClass::FunctionName,              \
+				&ThisClass::FunctionName##_Original, ModuleName);                                                                  \
+		}                                                                                                                          \
+                                                                                                                                   \
+		/* Returns how many of the listed sites were redirected. */                                                                \
+		UE::Interception::int32 InstallAtRelativeAddresses(                                                                        \
+			std::initializer_list<UE::Interception::uint64> RelativeVirtualAddresses, const wchar_t* ModuleName = nullptr)         \
+		{                                                                                                                          \
+			return FMultiCallSiteOverride::InstallAtRelativeAddresses(RelativeVirtualAddresses, &ThisClass::FunctionName,          \
+				&ThisClass::FunctionName##_Original, ModuleName);                                                                  \
+		}                                                                                                                          \
+	};                                                                                                                             \
+	static inline F##FunctionName##CallSiteOverride FunctionName##_CallSite

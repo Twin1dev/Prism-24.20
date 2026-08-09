@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreGlobals.h"
+#include "Building/BuildingSMActor.h"
 
 PRISM_NAMESPACE_START
 
@@ -17,12 +18,33 @@ public:
 
 	bool CanAffordToPlaceBuildableClass(FBuildingClassData* ClassToBuildData)
 	{
-		static void (*Function)(AFortPlayerController*, FBuildingClassData*) = decltype(Function)(InSDKUtils::GetImageBase() + 0xA66D8A0);
+		static bool (*Function)(AFortPlayerController*, FBuildingClassData*) = decltype(Function)(InSDKUtils::GetImageBase() + 0xA66D8A0);
 
-		Function(this, ClassToBuildData);
+		return Function(this, ClassToBuildData);
 	}
 
-	ABuildingSMActor* ServerCreateBuildingActorInternal(FBuildingClassData* BuildingClassData, const FVector_NetQuantize10& BuildLoc, const FRotator& BuildRot, bool bMirrored, bool SyncKey, bool bForceOverrideInteractBuildCheck, bool bIgnoreCostCheck, bool bIgnoreBuildingValidityCheck);
+	int32 PayBuildableClassPlacementCost(FBuildingClassData* BuildingClassData)
+	{
+		static int32 (*Function)(AFortPlayerController*, FBuildingClassData*) = decltype(Function)(InSDKUtils::GetImageBase() + 0xA69F6D4);
+
+		return Function(this, BuildingClassData);
+	}
+
+	ABuildingSMActor* ServerCreateBuildingActorInternal(FBuildingClassData* BuildingClassData, const FVector_NetQuantize10& BuildLoc, const FRotator& BuildRot, bool bMirrored, float SyncKey, 
+		bool bForceOverrideInteractBuildCheck = false, bool bIgnoreCostCheck = false, bool bIgnoreBuildingValidityCheck = false);
+	UE_DECLARE_CALL_SITE_OVERRIDE(ServerCreateBuildingActorInternal);
+
+	void ServerCreateBuildingActor(FCreateBuildingActorData& CreateBuildingData);
+	UE_DECLARE_SCRIPT_FUNCTION_OVERRIDE(ServerCreateBuildingActor);
+
+	void ServerBeginEditingBuildingActor(ABuildingSMActor* BuildingActorToEdit);
+	UE_DECLARE_SCRIPT_FUNCTION_OVERRIDE(ServerBeginEditingBuildingActor);
+
+	void ServerEditBuildingActor(ABuildingSMActor* BuildingActorToEdit, TSubclassOf<ABuildingSMActor> NewBuildingClass, uint8 RotationIterations, bool bMirrored);
+	UE_DECLARE_SCRIPT_FUNCTION_OVERRIDE(ServerEditBuildingActor);
+
+	void ServerEndEditingBuildingActor(ABuildingSMActor* BuildingActorToStopEditing);
+	UE_DECLARE_SCRIPT_FUNCTION_OVERRIDE(ServerEndEditingBuildingActor);
 
 	static void Tick(float DeltaTime);
 	static void Initialize();

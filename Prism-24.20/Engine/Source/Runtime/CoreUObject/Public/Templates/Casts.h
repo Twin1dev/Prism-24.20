@@ -46,6 +46,12 @@ inline To* Cast(From* Src)
 	}
 }
 
+template <typename To, typename From>
+FORCEINLINE To* Cast(const TWeakObjectPtr<From>& Src)
+{
+	return Cast<To>(Src.Get());
+}
+
 template<typename To, typename From>
 inline To* CastChecked(From* Src)
 {

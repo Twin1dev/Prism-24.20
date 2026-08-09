@@ -3461,6 +3461,14 @@ public:
 	uint8                                         Pad_38[0x8];                                       // 0x0038(0x0008)(Fixing Size After Last Property [ Dumper-7 ])
 	struct FVector                                Scale3D;                                           // 0x0040(0x0018)(Edit, BlueprintVisible, ZeroConstructor, SaveGame, IsPlainOldData, NoDestructor, HasGetValueTypeHash, NativeAccessSpecifierPublic)
 	uint8                                         Pad_58[0x8];                                       // 0x0058(0x0008)(Fixing Struct Size After Last Property [ Dumper-7 ])
+
+	FTransform() : Rotation(FQuat::Identity), Translation(FVector::ZeroVector), Scale3D(FVector::OneVector) {}
+	FTransform(const FQuat& InRotation, const FVector& InTranslation, const FVector& InScale3D = FVector::OneVector) : Rotation(InRotation), Translation(InTranslation), Scale3D(InScale3D)
+	{
+	}
+	explicit FTransform(const FVector& InTranslation) : Rotation(FQuat::Identity), Translation(InTranslation), Scale3D(FVector::OneVector)
+	{
+	}
 };
 DUMPER7_ASSERTS_FTransform;
 

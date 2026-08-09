@@ -3,6 +3,8 @@
 #include "Athena/FortPlayerControllerAthena.h"
 #include <Templates/Casts.h>
 #include "Items/FortInventory.h"
+#include "Engine/World.h"
+#include "Building/BuildingSMActor.h"
 
 PRISM_NAMESPACE_START
 
@@ -52,25 +54,13 @@ void AFortPlayerControllerAthena::ServerExecuteInventoryItem(const FGuid& ItemGu
 	}
 }
 
-/*
- * GetPlayerViewPoint used to be detoured here, over the game's own native, so that the
- * Replication Graph could get a view point out of a connection. It does not need one:
- * Prism::APlayerController::GetPlayerViewPoint reproduces the engine's chain from reflected
- * members, which is both cheaper (no ProcessEvent per call) and correct for a controller with
- * no pawn, where the version that lived here left its outputs untouched.
- *
- * The detour is gone rather than fixed in place because it was a global one: every caller in
- * the game got "the view target's eyes" in place of Fortnite's own implementation, for the
- * benefit of one caller in this module. Game code sees the shipped behaviour again.
- */
-
-ABuildingSMActor* AFortPlayerControllerAthena::ServerCreateBuildingActorInternal(FBuildingClassData* BuildingClassData, const FVector_NetQuantize10& BuildLoc, const FRotator& BuildRot, bool bMirrored, bool SyncKey, bool bForceOverrideInteractBuildCheck, bool bIgnoreCostCheck, bool bIgnoreBuildingValidityCheck)
+ABuildingSMActor* AFortPlayerControllerAthena::ServerCreateBuildingActorInternal(FBuildingClassData* BuildingClassData, const FVector_NetQuantize10& BuildLoc, const FRotator& BuildRot, bool bMirrored, float SyncKey, bool bForceOverrideInteractBuildCheck, bool bIgnoreCostCheck, bool bIgnoreBuildingValidityCheck)
 {
 	if (!MyFortPawn || MyFortPawn->bIsDBNO)
 		return nullptr;
 
 	AFortGameStateAthena* GameState = UWorld::GetWorld()->GameState;
-	UWorld* World = UWorld::GetWorld();
+	UWorld* World = ToPrism(UWorld::GetWorld());
 
 	if (!GameState->StructuralSupportSystem)
 	{
@@ -97,16 +87,108 @@ ABuildingSMActor* AFortPlayerControllerAthena::ServerCreateBuildingActorInternal
 				BuildingActor->K2_DestroyActor();
 			}
 
-			if (!CanAffordToPlaceBuildableClass(BuildingClassData))
+			if (bIgnoreCostCheck)
 			{
-				return nullptr;
+				if (!CanAffordToPlaceBuildableClass(BuildingClassData))
+				{
+					return nullptr;
+				}
+
+				PayBuildableClassPlacementCost(BuildingClassData);
 			}
 
+			FTransform Transform = FTransform(BuildRot.Quaternion(), BuildLoc);
+			BuildingSMActor = (ABuildingSMActor*)World->SpawnActor(BuildingClass, Transform);
+			if (BuildingSMActor)
+			{
+				BuildingSMActor->InitializeKismetSpawnedBuildingActor(BuildingSMActor, this, true, nullptr);
+				BuildingSMActor->bPlayerPlaced = true;
 
+				if (AFortPlayerStateAthena* FortPlayerState = Cast<AFortPlayerStateAthena>(PlayerState))
+				{
+					BuildingSMActor->Team = EFortTeam(FortPlayerState->TeamIndex);
+					BuildingSMActor->OnRep_Team();
+					BuildingSMActor->SetTeam(FortPlayerState->TeamIndex);
+				}
+			}
 		}
 	}
 
-	return nullptr;
+	if (!BuildingActors.IsEmpty())
+		BuildingActors.Empty();
+
+	return BuildingSMActor;
+}
+
+void AFortPlayerControllerAthena::ServerCreateBuildingActor(FCreateBuildingActorData& CreateBuildingData)
+{
+	FBuildingClassData* BuildingClassData = &CreateBuildingData.BuildingClassData;
+
+	for (auto& BuildableClass : UWorld::GetWorld()->GameState->AllPlayerBuildableClassesIndexLookup)
+	{
+		if (BuildableClass.Value == CreateBuildingData.BuildingClassHandle)
+		{
+			CreateBuildingData.BuildingClassData.BuildingClass = BuildableClass.Key;
+			break;
+		}
+	}
+
+	ServerCreateBuildingActorInternal(BuildingClassData, CreateBuildingData.BuildLoc, CreateBuildingData.BuildRot, CreateBuildingData.bMirrored, CreateBuildingData.SyncKey);
+}
+
+void AFortPlayerControllerAthena::ServerBeginEditingBuildingActor(ABuildingSMActor* BuildingActorToEdit)
+{
+	if (!PlayerState || !BuildingActorToEdit || !MyFortPawn)
+		return;
+
+	BuildingActorToEdit->SetEditingPlayer(PlayerState);
+
+	/*static UFortGameData* GameData = UFortEngine::GetEngine()->AssetManager->GameDataCommon;
+	static UFortWeaponItemDefinition* EditToolItemDefinition = GameData->EditToolItem.Get();
+	if (!EditToolItemDefinition)
+	{
+		EditToolItemDefinition = GameData->EditToolItem.LoadSynchronous();
+	}*/
+
+	FFortItemEntry* ItemEntry = WorldInventory->Inventory.ReplicatedEntries.FindByPredicate([&](FFortItemEntry& Entry) {
+		return Entry.ItemDefinition->Class == UFortEditToolItemDefinition::StaticClass();
+		});
+
+	if (ItemEntry && MyFortPawn->EquipWeaponDefinition(Cast<UFortWeaponItemDefinition>(ItemEntry->ItemDefinition), ItemEntry->ItemGuid, ItemEntry->TrackerGuid, false))
+	{
+		if (AFortWeap_EditingTool* EditingTool = Cast<AFortWeap_EditingTool>(MyFortPawn->CurrentWeapon))
+		{
+			EditingTool->EditActor = BuildingActorToEdit;
+			EditingTool->OnRep_EditActor();
+		}
+	}
+}
+
+void AFortPlayerControllerAthena::ServerEditBuildingActor(ABuildingSMActor* BuildingActorToEdit, TSubclassOf<ABuildingSMActor> NewBuildingClass, uint8 RotationIterations, bool bMirrored)
+{
+	if (!BuildingActorToEdit || !BuildingActorToEdit->IsA(ABuildingSMActor::StaticClass()) || !MyFortPawn)
+		return;
+
+	BuildingActorToEdit->SetEditingPlayer(nullptr);
+
+	if (ABuildingSMActor* NewBuildingActor = BuildingActorToEdit->ReplaceBuildingActor(EBuildingReplacementType::BRT_Edited, NewBuildingClass, BuildingActorToEdit->CurrentBuildingLevel, RotationIterations, bMirrored, this))
+	{
+		NewBuildingActor->bPlayerPlaced = true;
+	}
+}
+
+void AFortPlayerControllerAthena::ServerEndEditingBuildingActor(ABuildingSMActor* BuildingActorToStopEditing)
+{
+	if (!BuildingActorToStopEditing || BuildingActorToStopEditing->EditingPlayer != PlayerState || BuildingActorToStopEditing->bDestroyed || !MyFortPawn)
+		return;
+
+	BuildingActorToStopEditing->SetEditingPlayer(nullptr);
+
+	if (AFortWeap_EditingTool* EditingTool = Cast<AFortWeap_EditingTool>(MyFortPawn->CurrentWeapon))
+	{
+		EditingTool->EditActor = BuildingActorToStopEditing;
+		EditingTool->OnRep_EditActor();
+	}
 }
 
 void AFortPlayerControllerAthena::Tick(float DeltaTime)
@@ -126,6 +208,10 @@ void AFortPlayerControllerAthena::Initialize()
 {
 	ServerAcknowledgePossession_Override.InstallAtVirtualIndex("FortPlayerControllerAthena", 0x130);
 	ServerExecuteInventoryItem_Override.InstallAtVirtualIndex("FortPlayerControllerAthena", 0x22D);
+	ServerCreateBuildingActor_Override.InstallAtVirtualIndex("FortPlayerControllerAthena", 0x24D);
+	ServerBeginEditingBuildingActor_Override.InstallAtVirtualIndex("FortPlayerControllerAthena", 0x254);
+	ServerEditBuildingActor_Override.InstallAtVirtualIndex("FortPlayerControllerAthena", 0x24F);
+	ServerEndEditingBuildingActor_Override.InstallAtVirtualIndex("FortPlayerControllerAthena", 0x252);
 }
 
 IMPLEMENT_MODULE(AFortPlayerControllerAthena);

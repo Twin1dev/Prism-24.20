@@ -380,6 +380,87 @@ namespace UE::Interception
 		return CallSites;
 	}
 
+	namespace
+	{
+		/*
+		 * Reaching a far destination from a near CALL.
+		 *
+		 * A near CALL carries a signed 32-bit displacement, so it can only reach +-2GB. That is
+		 * never enough to go from the game image to this module: Windows loads them nowhere near
+		 * each other, so a call site in the executable is typically many gigabytes from any
+		 * replacement compiled here, and a rel32 rewrite could not encode it at all.
+		 *
+		 * The fix is one indirection. A page is allocated within reach of the call site holding a
+		 * 14-byte absolute jump - FF /4 with a RIP-relative operand of zero, so the 64-bit target
+		 * sits immediately after the instruction - and the CALL is pointed at that instead. The
+		 * jump is transparent: it does not touch the stack or any register, so the return address
+		 * pushed by the CALL is still the call site and the replacement returns straight to it.
+		 *
+		 * Stubs are cached per destination and deliberately never freed. They are a handful of
+		 * pages for the life of the process, and freeing one while a call site still pointed at
+		 * it would be far worse than leaking it.
+		 */
+		void* AllocateExecutablePageNear(std::uintptr_t Near)
+		{
+			/* Reservations are granular to 64KB, so nothing finer is worth trying. */
+			static constexpr std::uintptr_t AllocationGranularity = 0x10000;
+
+			/* Kept under 2GB with room to spare, so the displacement cannot land on the boundary. */
+			static constexpr std::uintptr_t MaxSearchDistance = 0x7FFE0000;
+
+			for (std::uintptr_t Distance = AllocationGranularity; Distance < MaxSearchDistance; Distance += AllocationGranularity)
+			{
+				for (const int Direction : { -1, 1 })
+				{
+					const std::intptr_t Candidate = static_cast<std::intptr_t>(Near) + Direction * static_cast<std::intptr_t>(Distance);
+
+					if (Candidate <= 0)
+						continue;
+
+					if (void* const Page = ::VirtualAlloc(reinterpret_cast<void*>(Candidate), 0x1000,
+						MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE))
+					{
+						return Page;
+					}
+				}
+			}
+
+			return nullptr;
+		}
+
+		void* GetOrCreateFarJumpStub(std::uintptr_t Near, void* Destination)
+		{
+			static std::vector<std::pair<void*, void*>> Stubs;
+
+			for (const std::pair<void*, void*>& Stub : Stubs)
+			{
+				if (Stub.first != Destination)
+					continue;
+
+				/* Only reusable if it is also in range of *this* call site. */
+				const std::intptr_t Reach = reinterpret_cast<std::intptr_t>(Stub.second)
+					- (static_cast<std::intptr_t>(Near) + static_cast<std::intptr_t>(FCallSiteOverride::CallInstructionLength));
+
+				if (Reach <= INT32_MAX && Reach >= INT32_MIN)
+					return Stub.second;
+			}
+
+			void* const Page = AllocateExecutablePageNear(Near);
+
+			if (Page == nullptr)
+				return nullptr;
+
+			/* jmp qword ptr [rip+0]; dq Destination */
+			uint8 Code[14] = { 0xFF, 0x25, 0x00, 0x00, 0x00, 0x00 };
+			std::memcpy(Code + 6, &Destination, sizeof(void*));
+			std::memcpy(Page, Code, sizeof(Code));
+
+			Stubs.emplace_back(Destination, Page);
+
+			return Page;
+		}
+	}
+
 	FFunctionOverrideHandle FCallSiteOverride::Install(void* CallSite, void* NewDestination)
 	{
 		if (IsInstalled() || NewDestination == nullptr || !IsCallSite(CallSite))
@@ -392,12 +473,23 @@ namespace UE::Interception
 
 		uint8* const Instruction = reinterpret_cast<uint8*>(CallSite);
 
-		const std::intptr_t Displacement = reinterpret_cast<std::intptr_t>(NewDestination)
+		std::intptr_t Displacement = reinterpret_cast<std::intptr_t>(NewDestination)
 			- (reinterpret_cast<std::intptr_t>(Instruction) + static_cast<std::intptr_t>(CallInstructionLength));
 
-		/* A near CALL can only reach +-2GB; anything further needs a trampoline the caller supplies. */
+		/* Out of rel32 range - go through an absolute jump placed within reach instead. */
 		if (Displacement > INT32_MAX || Displacement < INT32_MIN)
-			return FFunctionOverrideHandle();
+		{
+			void* const Stub = GetOrCreateFarJumpStub(reinterpret_cast<std::uintptr_t>(Instruction), NewDestination);
+
+			if (Stub == nullptr)
+				return FFunctionOverrideHandle();
+
+			Displacement = reinterpret_cast<std::intptr_t>(Stub)
+				- (reinterpret_cast<std::intptr_t>(Instruction) + static_cast<std::intptr_t>(CallInstructionLength));
+
+			if (Displacement > INT32_MAX || Displacement < INT32_MIN)
+				return FFunctionOverrideHandle();
+		}
 
 		FScopedMemoryWriteAccess WriteAccess(Instruction, CallInstructionLength);
 
@@ -412,6 +504,16 @@ namespace UE::Interception
 		Handle = FFunctionOverrideRegistry::Get().Register(EFunctionOverrideType::CallSite, CallSiteAddress, OriginalDestination, NewDestination, -1);
 
 		return Handle;
+	}
+
+	FFunctionOverrideHandle FCallSiteOverride::InstallAtRelativeAddress(uint64 RelativeVirtualAddress, void* NewDestination, const wchar_t* ModuleName)
+	{
+		void* const CallSite = FModuleImage::ResolveRelativeAddress(RelativeVirtualAddress, ModuleName);
+
+		if (CallSite == nullptr)
+			return FFunctionOverrideHandle();
+
+		return Install(CallSite, NewDestination);
 	}
 
 	bool FCallSiteOverride::Remove()
@@ -438,6 +540,83 @@ namespace UE::Interception
 		OriginalDestination = nullptr;
 
 		return true;
+	}
+
+	/*-----------------------------------------------------------------------------
+		FMultiCallSiteOverride
+	-----------------------------------------------------------------------------*/
+
+	FFunctionOverrideHandle FMultiCallSiteOverride::Install(void* CallSite, void* NewDestination)
+	{
+		/*
+		 * Every site has to be calling the same thing. There is one OriginalDestination to chain
+		 * to, so hooking a site that calls something else would silently reroute it to a function
+		 * it never called - the same trap as sharing one _Original across virtual tables whose
+		 * slots differ.
+		 */
+		void* const Displaced = FCallSiteOverride::ResolveDestination(CallSite);
+
+		if (Displaced == nullptr)
+			return FFunctionOverrideHandle();
+
+		/*
+		 * This also rejects installing the same site twice: the second time round it no longer
+		 * calls OriginalDestination - it calls the replacement, or the stub standing in for it -
+		 * so the test above fails and we do not capture our own replacement as the original.
+		 */
+		if (OriginalDestination != nullptr && Displaced != OriginalDestination)
+			return FFunctionOverrideHandle();
+
+		std::unique_ptr<FCallSiteOverride> Override = std::make_unique<FCallSiteOverride>();
+
+		const FFunctionOverrideHandle Handle = Override->Install(CallSite, NewDestination);
+
+		if (!Handle.IsValid())
+			return FFunctionOverrideHandle();
+
+		OriginalDestination = Displaced;
+		Overrides.push_back(std::move(Override));
+
+		return Handle;
+	}
+
+	FFunctionOverrideHandle FMultiCallSiteOverride::InstallAtRelativeAddress(uint64 RelativeVirtualAddress, void* NewDestination, const wchar_t* ModuleName)
+	{
+		void* const CallSite = FModuleImage::ResolveRelativeAddress(RelativeVirtualAddress, ModuleName);
+
+		if (CallSite == nullptr)
+			return FFunctionOverrideHandle();
+
+		return Install(CallSite, NewDestination);
+	}
+
+	int32 FMultiCallSiteOverride::InstallAtRelativeAddresses(std::initializer_list<uint64> RelativeVirtualAddresses, void* NewDestination, const wchar_t* ModuleName)
+	{
+		int32 NumInstalled = 0;
+
+		for (const uint64 RelativeVirtualAddress : RelativeVirtualAddresses)
+		{
+			if (InstallAtRelativeAddress(RelativeVirtualAddress, NewDestination, ModuleName).IsValid())
+				NumInstalled++;
+		}
+
+		return NumInstalled;
+	}
+
+	bool FMultiCallSiteOverride::RemoveAll()
+	{
+		bool bRemovedAll = !Overrides.empty();
+
+		for (const std::unique_ptr<FCallSiteOverride>& Override : Overrides)
+		{
+			if (!Override->Remove())
+				bRemovedAll = false;
+		}
+
+		Overrides.clear();
+		OriginalDestination = nullptr;
+
+		return bRemovedAll;
 	}
 
 	/*-----------------------------------------------------------------------------

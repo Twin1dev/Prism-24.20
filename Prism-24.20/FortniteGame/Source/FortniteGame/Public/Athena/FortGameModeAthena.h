@@ -21,6 +21,17 @@ public:
     void UpdateSafeZonesPhase();
 	UE_DECLARE_NATIVE_OVERRIDE(UpdateSafeZonesPhase);
 
+    FName RedirectLootTierGroup(const FName& InLootTierGroup)
+    {
+        for (auto& Redirect : RedirectAthenaLootTierGroups)
+        {
+            if (InLootTierGroup == Redirect.Key)
+            {
+                return Redirect.Value;
+            }
+        }
+    }
+
     static void Initialize();
 };
 UE_VERIFY_SDK_CLASS_EXTENSION(AFortGameModeAthena);
