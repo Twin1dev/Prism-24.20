@@ -8,8 +8,8 @@ Includes a recreated Replication Graph plus Fortnite's own game-specific version
 
 Source:
 
-- `Prism-24.20/Engine/Plugins/Runtime/ReplicationGraph/Source/Private/ReplicationGraph.cpp`
-- `Prism-24.20/FortniteGame/Source/FortniteGame/Private/Online/FortReplicationGraph.cpp`
+- [ReplicationGraph.cpp](Prism-24.20/Engine/Plugins/Runtime/ReplicationGraph/Source/Private/ReplicationGraph.cpp)
+- [FortReplicationGraph.cpp](Prism-24.20/FortniteGame/Source/FortniteGame/Private/Online/FortReplicationGraph.cpp)
 
 ## Status
 
