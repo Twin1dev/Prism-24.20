@@ -7,8 +7,8 @@ A game server for Fortnite v24.20 (`++Fortnite+Release-24.20-CL-25156858`).
 Includes a recreated Replication Graph plus Fortnite's own game-specific version built on top of it (`FortReplicationGraph`). Not 1:1 with Epic's, but still cool.
 
 Source:
-- `Prism-24.20/Engine/Plugins/Runtime/ReplicationGraph/Source/Private/ReplicationGraph.cpp`
-- `Prism-24.20/FortniteGame/Source/FortniteGame/Private/Online/FortReplicationGraph.cpp`
+- [ReplicationGraph.cpp](Prism-24.20/Engine/Plugins/Runtime/ReplicationGraph/Source/Private/ReplicationGraph.cpp)
+- [FortReplicationGraph.cpp](Prism-24.20/FortniteGame/Source/FortniteGame/Private/Online/FortReplicationGraph.cpp)
 
 ## Status
 
